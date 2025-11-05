@@ -17,5 +17,5 @@
   vars:
     task_state: "container_absent"
 
-- name: "STATE: Ensure Podman installation is present"
+- name: "STATE: Ensure Podman installation is absent"
   ansible.builtin.include_tasks: absent.yml

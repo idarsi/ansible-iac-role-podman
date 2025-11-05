@@ -27,13 +27,13 @@
 # ENSURING PACKAGE IS PRESENT
 ###############################################################################
 
-- name: "Ensuring packages are installed"
+- name: "Ensuring packages are uninstalled"
   ansible.builtin.dnf:
     name: "{{ iac_package }}"
     sslverify: "{{ dnf_sslverify }}"
     validate_certs: "{{ dnf_validate_certs }}"
     disable_gpg_check: "{{ dnf_disable_gpg_check }}"
-    state: "present"
+    state: "absent"
   environment:
     http_proxy: "{{ http_proxy }}"
     https_proxy: "{{ https_proxy }}"
