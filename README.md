@@ -35,3 +35,8 @@ Requirements
 
 - Other components
   - Ansible 2.15 or higher
+
+Code Quality
+------------
+
+This project adheres to the [Ansible Lint](https://ansible-lint.readthedocs.io) **production** profile, ensuring high-quality and production-ready configuration management.
