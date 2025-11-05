@@ -3,7 +3,7 @@
 #
 # log_write.yml
 #
-# @author Arsi Atomi <arsi@atomi.sh>
+# @author Arsi Atomi
 #
 ###############################################################################
 
@@ -13,7 +13,7 @@
 
 - name: "Adding log to task-report"
   ansible.builtin.shell: >
-    echo "{{ ansible_date_time.iso8601 }} {{ ansible_ssh_user | default(lookup('env', 'USER')) }} {{ iac_service_key }} {{ iac_log_write }}" \
+    echo "{{ ansible_date_time.iso8601 }} {{ ansible_ssh_user | default(lookup('env', 'USER')) }} {{ iac_service_name }} {{ iac_log_write }}" \
     >> {{ iac_ansible_report_tasks_path }}
   register: my_output
   changed_when: false

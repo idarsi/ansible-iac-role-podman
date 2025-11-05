@@ -4,6 +4,7 @@ ANSIBLE-IAC-ROLE-PODMAN
 **LICENSE** MIT License [LICENSE](LICENSE)  
 **AUTHORS**
 - Arsi Atomi <arsi@atomi.sh>  
+- Arsi Atomi <arsi.atomi@valtori.fi>  
 
 Overview
 ========
@@ -11,9 +12,6 @@ Overview
 This Ansible role is designed to simplify and enhance the flexibility of Podman management.
 
 This role uses only ansible.builtin.* ansible modules and podman shell command.
-
-Supported Podman versions:
-
 
 These operations are supported:
 
@@ -31,8 +29,9 @@ Stopping container              | container_stopped   |
 Requirements
 ------------
 
-- Operating system
+- Operating system (tested on)
+  - Red Hat Enterprise Linux 8
   - Rocky Linux 10
 
 - Other components
-  - Ansible 2.16 or higher
+  - Ansible 2.15 or higher

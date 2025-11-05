@@ -3,7 +3,7 @@
 #
 # main.yml
 #
-# @author Arsi Atomi <arsi@atomi.sh>
+# @author Arsi Atomi
 #
 ###############################################################################
 
@@ -26,10 +26,10 @@
 
 - name: "Checking if service_key is found from variables"
   ansible.builtin.fail:
-    msg: "iac_blueprint.{{ iac_service_key }} is not defined"
+    msg: "iac_blueprint or iac_blueprint.podman is not defined"
   when:
     - iac_blueprint is not defined
-    - iac_blueprint.{{ iac_service_key }} is not defined
+    - iac_blueprint.podman is not defined
 
 ###############################################################################
 # SETTING VARIABLES
