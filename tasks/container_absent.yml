@@ -28,6 +28,6 @@
   failed_when: false
 
 - name: "Ensuring container is absent"
-  ansible.builtin.shell: podman rm {{ podman_container_record.parameters.name }}
+  ansible.builtin.command: podman rm {{ podman_container_record.parameters.name }}
   changed_when: true
   when: container_active.stdout == "exited"
