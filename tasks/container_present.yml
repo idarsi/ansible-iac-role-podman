@@ -29,6 +29,15 @@
       {% endfor %}
   when: podman_container_record.parameters is defined
 
+- name: "Rendering environment variables for container"
+  ansible.builtin.set_fact:
+    rendered_lines: |
+      {{ rendered_lines | default(omit) }} \
+      {% for item in podman_container_record.environment | dict2items if item.value is not none %}
+      --env {{ item.key }}={{ item.value }} \
+      {% endfor %}
+  when: podman_container_record.environment is defined
+
 - name: "Checking container status"
   ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_record.parameters.name }}
   register: container_active
