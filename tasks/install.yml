@@ -10,6 +10,11 @@
 - name: "STATE: Ensure Podman installation is present"
   ansible.builtin.include_tasks: present.yml
 
+- name: "STATE: Ensure network is present"
+  ansible.builtin.include_tasks: loop_networks.yml
+  vars:
+    task_state: "network_present"
+
 - name: "STATE: Ensure container is present"
   ansible.builtin.include_tasks: loop_containers.yml
   vars:

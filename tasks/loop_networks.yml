@@ -1,0 +1,28 @@
+---
+###############################################################################
+#
+# loop_networks.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+###############################################################################
+# SETTING VARIABLES
+###############################################################################
+
+- name: "Checking if required variables are defined"
+  ansible.builtin.assert:
+    that:
+      - podman_networks is defined
+    fail_msg: "All tests did not pass"
+
+###############################################################################
+# LOOPING THROUGH NETWORKS TO BE ADDED
+###############################################################################
+
+- name: "Looping through networks"
+  ansible.builtin.include_tasks: "{{ task_state }}.yml"
+  loop: "{{ podman_networks }}"
+  loop_control:
+    loop_var: podman_network_record

@@ -17,5 +17,10 @@
   vars:
     task_state: "container_absent"
 
+- name: "STATE: Ensure network is absent"
+  ansible.builtin.include_tasks: loop_networks.yml
+  vars:
+    task_state: "network_absent"
+
 - name: "STATE: Ensure Podman installation is absent"
   ansible.builtin.include_tasks: absent.yml

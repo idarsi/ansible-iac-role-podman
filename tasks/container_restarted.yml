@@ -1,0 +1,34 @@
+---
+###############################################################################
+#
+# container_restarted.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+###############################################################################
+# SETTING VARIABLES
+###############################################################################
+
+- name: "Checking if required variables are defined"
+  ansible.builtin.assert:
+    that:
+      - podman_container_record is defined
+    fail_msg: "All tests did not pass"
+
+###############################################################################
+# ENSURING CONTAINER IS STOPPED
+###############################################################################
+
+- name: "Checking container status"
+  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_record.parameters.name }}
+  register: container_active
+  changed_when: false
+  failed_when: false
+
+- name: "Ensuring container is restarted"
+  ansible.builtin.shell: >
+    podman restart {{ podman_container_record.parameters.name }}
+  changed_when: true
+  when: container_active.stdout == "running"

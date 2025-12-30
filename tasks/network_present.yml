@@ -1,0 +1,33 @@
+---
+###############################################################################
+#
+# network_present.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+###############################################################################
+# SETTING VARIABLES
+###############################################################################
+
+- name: "Checking if required variables are defined"
+  ansible.builtin.assert:
+    that:
+      - podman_network_record is defined
+      - podman_network_record.subnet is defined
+      - podman_network_record.gateway is defined
+    fail_msg: "All tests did not pass"
+
+###############################################################################
+# ENSURING CONTAINER IS PRESENT
+###############################################################################
+
+- name: "Ensuring network is present"
+  ansible.builtin.shell: >
+    podman network create
+    --subnet {{ podman_network_record.subnet }}
+    --gateway {{ podman_network_record.gateway }}
+    --driver {{ podman_network_record.driver }}
+    {{ podman_network_record.name }}
+  changed_when: true

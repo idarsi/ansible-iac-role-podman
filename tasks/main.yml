@@ -38,7 +38,8 @@
 - name: "Setting what containers are to be configured"
   ansible.builtin.set_fact:
     podman_containers: "{{ iac_blueprint.podman.containers }}"
-    podman_network_configuration: "{{ iac_blueprint.podman.configuration.network }}"
+    podman_networks: "{{ iac_blueprint.podman.networks | default([]) }}"
+    podman_network_configuration: "{{ iac_blueprint.podman.configuration.network | default(omit) }}"
 
 - name: "Checking proxy address if it's defined"
   ansible.builtin.set_fact:
@@ -84,6 +85,18 @@
   ansible.builtin.include_tasks: absent.yml
   when: state == 'absent'
 
+- name: "STATE: Ensure network is present"
+  ansible.builtin.include_tasks: loop_networks.yml
+  vars:
+    task_state: "network_present"
+  when: state == 'network_present'
+
+- name: "STATE: Ensure network is absent"
+  ansible.builtin.include_tasks: loop_networks.yml
+  vars:
+    task_state: "network_absent"
+  when: state == 'network_absent'
+
 - name: "STATE: Ensure container is present"
   ansible.builtin.include_tasks: loop_containers.yml
   vars:
@@ -96,14 +109,20 @@
     task_state: "container_absent"
   when: state == 'container_absent'
 
-- name: "STATE: Ensure container is present"
+- name: "STATE: Ensure container is started"
   ansible.builtin.include_tasks: loop_containers.yml
   vars:
     task_state: "container_started"
   when: state == 'container_started'
 
-- name: "STATE: Ensure container is absent"
+- name: "STATE: Ensure container is stopped"
   ansible.builtin.include_tasks: loop_containers.yml
   vars:
     task_state: "container_stopped"
   when: state == 'container_stopped'
+
+- name: "STATE: Ensure container is restarted"
+  ansible.builtin.include_tasks: loop_containers.yml
+  vars:
+    task_state: "container_restarted"
+  when: state == 'container_restarted'

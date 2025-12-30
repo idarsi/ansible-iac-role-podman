@@ -1,0 +1,34 @@
+---
+###############################################################################
+#
+# network_absent.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+###############################################################################
+# SETTING VARIABLES
+###############################################################################
+
+- name: "Checking if required variables are defined"
+  ansible.builtin.assert:
+    that:
+      - podman_network_record is defined
+      - podman_network_record.name is defined
+    fail_msg: "All tests did not pass"
+
+###############################################################################
+# ENSURING CONTAINER IS REMOVED
+###############################################################################
+
+# - name: "Checking container status"
+#  ansible.builtin.command: podman network inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_network_record.name }}
+#  register: network_active
+#  changed_when: false
+#  failed_when: false
+
+- name: "Ensuring container is absent"
+  ansible.builtin.command: podman network rm {{ podman_network_record.name }}
+  changed_when: true
+#  when: network_active.stdout == "exited"

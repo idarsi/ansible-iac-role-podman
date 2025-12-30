@@ -9,14 +9,39 @@ servers:
           network:
             default_subnet: 10.168.0.0/24
             default_gateway: 10.168.0.1
+        networks:
+          - name: "podnet0"
+            subnet: 10.168.0.0/24
+            gateway: 10.168.0.1
+            driver: bridge
         containers:
           - image: "docker.io/ollama/ollama"
             parameters:
-              name: "test-1"
-              hostname: "test-1"
+              name: "ollama"
+              hostname: "ollama"
               ip: 10.168.0.100
               publish: 11434:11434
+              volume:
+                - "/srv/ollama:/root/.ollama:Z"
+            environment:
+              OLLAMA_HOST: "0.0.0.0"
           - image: "docker.io/metabase/metabase"
             parameters:
-              name: "testi-2"
+              name: "metabase"
               ip: 10.168.0.101
+        directories:
+          - path: "/srv/ollama"
+            owner: "root"
+            group: "root"
+            mode: "0750"
+        files:
+          - path: "/srv/ollama/README.txt"
+            content: "Managed by ansible-iac-role-podman\n"
+            mode: "0640"
+        cron:
+          - name: "podman-prune"
+            user: "root"
+            hour: "2"
+            minute: "15"
+            job: "podman system prune -f"
+            cron_file: "podman-maintenance"
