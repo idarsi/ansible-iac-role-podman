@@ -21,6 +21,12 @@
   vars:
     iac_package: "podman"
 
+- name: "Ensuring cron configuration is absent"
+  ansible.builtin.include_tasks: cron_absent.yml
+  when: iac_blueprint.podman.cron is defined
+  vars:
+    iac_cron: "{{ iac_blueprint.podman.cron | default([]) }}"
+
 - name: "Ensuring filesystem configuration is absent"
   ansible.builtin.include_tasks: fs_absent.yml
   when: iac_blueprint.podman.directories is defined
