@@ -16,6 +16,11 @@
 # ENSURING PODMAN IS ABSENT
 ###############################################################################
 
+- name: "Ensuring podman containers are absent"
+  ansible.builtin.include_tasks: loop_containers.yml
+  vars:
+    task_state: "container_absent"
+
 - name: "Ensuring podman package is absent"
   ansible.builtin.include_tasks: package_absent.yml
   vars:

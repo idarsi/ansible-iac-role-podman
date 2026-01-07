@@ -13,14 +13,14 @@
 
 - name: "Checking if we are in container"
   ansible.builtin.meta: end_play
-  when: ansible_virtualization_type in ["docker", "podman", "lxc"]
+  when: ansible_facts["virtualization_type"]  in ["docker", "podman", "lxc"]
 
 - name: "Checking if operating system is supported"
   ansible.builtin.fail:
-    msg: "Unsupported operating system: {{ ansible_distribution }} {{ ansible_distribution_major_version }}"
+    msg: "Unsupported operating system: {{ ansible_facts['distribution'] }} {{ ansible_facts['distribution_major_version'] }}"
   when: >
-    iac_supported_os | selectattr('name', 'equalto', ansible_distribution)
-                     | selectattr('versions', 'contains', ansible_distribution_major_version)
+    iac_supported_os | selectattr('name', 'equalto', ansible_facts['distribution'])
+                     | selectattr('versions', 'contains', ansible_facts['distribution_major_version'])
                      | list
                      | length == 0
 
@@ -38,7 +38,7 @@
 - name: "Setting what containers are to be configured"
   ansible.builtin.set_fact:
     podman_containers: "{{ iac_blueprint.podman.containers }}"
-    podman_network_configuration: "{{ iac_blueprint.podman.configuration.network }}"
+    podman_network_configuration: "{{ iac_blueprint.podman.configuration.network | default(omit) }}"
 
 - name: "Checking proxy address if it's defined"
   ansible.builtin.set_fact:
