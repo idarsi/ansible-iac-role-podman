@@ -1,6 +1,6 @@
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
-**COPYRIGHT** 2025 ^(ida|arsi)$ collective  
+**COPYRIGHT** 2026 ^(ida|arsi)$ collective  
 **LICENSE** MIT License [LICENSE](LICENSE)  
 **AUTHORS**
 - Arsi Atomi <arsi@atomi.sh>  
