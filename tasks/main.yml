@@ -37,7 +37,7 @@
 
 - name: "Setting what containers are to be configured"
   ansible.builtin.set_fact:
-    podman_containers: "{{ iac_blueprint.podman.containers }}"
+    podman_containers: "{{ iac_blueprint.podman.containers | default([])}}"
     podman_network_configuration: "{{ iac_blueprint.podman.configuration.network | default(omit) }}"
 
 - name: "Checking proxy address if it's defined"
