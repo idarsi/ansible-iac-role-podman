@@ -26,6 +26,97 @@ Removing container              | container_absent    |
 Starting container              | container_started   |
 Stopping container              | container_stopped   |
 
+Container command arguments
+---------------------------
+
+Container definitions may include an optional top-level `command` string. When
+set, the role appends it after the image name in `podman create`, which is
+useful for images such as vLLM that are configured primarily through
+post-image CLI arguments.
+
+Experimental bootstrap packages
+--------------------------------
+
+Container definitions may include an experimental top-level
+`bootstrap_packages` list. When present, the role starts the container and then
+tries to install the listed packages inside the running container by using the
+first available package manager from `dnf`, `microdnf`, or `yum`.
+
+This is intentionally experimental:
+
+- it modifies the container at runtime instead of using a prebuilt image
+- package-manager behavior depends on the image
+- it is less deterministic than using a dedicated preset or image
+
+Example:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-sshd"
+        command: "sleep infinity"
+        bootstrap_packages:
+          - openssh-server
+```
+
+Experimental bootstrap services
+-------------------------------
+
+Container definitions may include an experimental top-level
+`bootstrap_services` list. When present, the role tries to enable and start the
+listed systemd services inside the running container with `systemctl enable
+--now`.
+
+This requires that:
+
+- the container image actually includes `systemctl`
+- systemd is usable inside the container
+- required service packages are already present, or were installed through
+  `bootstrap_packages`
+
+Example:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-sshd"
+        command: "sleep infinity"
+        bootstrap_packages:
+          - openssh-server
+        bootstrap_services:
+          - sshd
+```
+
+Container presets
+-----------------
+
+Container definitions may also use an optional top-level `preset` key instead
+of repeating a fixed image reference in every inventory entry. The role resolves
+the preset from `podman_container_presets` and then merges the explicit
+container definition on top of it.
+
+Example:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-init"
+          publish: "8080:80"
+```
+
+Default built-in presets:
+
+- `rhel9` -> `registry.access.redhat.com/ubi9-init`
+
 Requirements
 ------------
 

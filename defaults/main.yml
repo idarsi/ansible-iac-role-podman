@@ -43,3 +43,11 @@ iac_ansible_report: true
 iac_ansible_report_tasks_path: "/root/ansible-report-tasks.log"
 
 podman_containers_conf: "/etc/containers/containers.conf"
+
+###############################################################################
+# CONTAINER PRESETS
+###############################################################################
+
+podman_container_presets:
+  rhel9:
+    image: "registry.access.redhat.com/ubi9-init"

@@ -17,18 +17,119 @@
       - podman_container_record is defined
     fail_msg: "All tests did not pass"
 
+- name: "Resolving optional container preset"
+  ansible.builtin.set_fact:
+    podman_container_effective: >-
+      {{
+        (
+          podman_container_presets[podman_container_record.preset]
+          if (podman_container_record.preset is defined and podman_container_record.preset is not none)
+          else {}
+        ) | combine(podman_container_record, recursive=True)
+      }}
+
+- name: "Checking that container name is available"
+  ansible.builtin.assert:
+    that:
+      - podman_container_effective.parameters is defined
+      - podman_container_effective.parameters.name is defined
+      - (podman_container_effective.parameters.name | string | trim) != ""
+    fail_msg: "Podman container must define parameters.name directly or through preset data"
+
 ###############################################################################
 # ENSURING CONTAINER IS STARTED
 ###############################################################################
 
 - name: "Checking container status"
-  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_record.parameters.name }}
+  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_effective.parameters.name }}
   register: container_active
   changed_when: false
   failed_when: false
 
 - name: "Ensuring container is started"
   ansible.builtin.shell: >
-    podman start {{ podman_container_record.parameters.name }}
+    podman start {{ podman_container_effective.parameters.name }}
   changed_when: true
   when: container_active.stdout != "running"
+
+- name: "Detecting package manager inside container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "if command -v dnf >/dev/null 2>&1; then echo dnf;
+    elif command -v microdnf >/dev/null 2>&1; then echo microdnf;
+    elif command -v yum >/dev/null 2>&1; then echo yum;
+    else exit 1; fi"
+  register: podman_container_package_manager
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_packages is defined
+    - podman_container_effective.bootstrap_packages | length > 0
+
+- name: "Checking bootstrap package manager support"
+  ansible.builtin.assert:
+    that:
+      - podman_container_package_manager.rc == 0
+      - (podman_container_package_manager.stdout | string | trim) != ""
+    fail_msg: >-
+      bootstrap_packages is experimental and requires a supported package
+      manager (dnf, microdnf, yum) inside container
+      {{ podman_container_effective.parameters.name }}
+  when:
+    - podman_container_effective.bootstrap_packages is defined
+    - podman_container_effective.bootstrap_packages | length > 0
+
+- name: "Installing experimental bootstrap packages inside container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "{{ podman_container_package_manager.stdout | trim }} install -y
+    {% for package_name in podman_container_effective.bootstrap_packages %}
+    {{ package_name }}
+    {% endfor %}"
+  register: podman_bootstrap_install_result
+  changed_when: >-
+    (
+      'Nothing to do.' not in (podman_bootstrap_install_result.stdout | default(''))
+      and 'Nothing to do.' not in (podman_bootstrap_install_result.stderr | default(''))
+      and 'already installed' not in (podman_bootstrap_install_result.stdout | default(''))
+      and 'already installed' not in (podman_bootstrap_install_result.stderr | default(''))
+    )
+  when:
+    - podman_container_effective.bootstrap_packages is defined
+    - podman_container_effective.bootstrap_packages | length > 0
+
+- name: "Checking systemctl support inside container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1 || systemctl list-unit-files >/dev/null 2>&1"
+  register: podman_container_systemctl_support
+  changed_when: false
+  failed_when: false
+  when:
+    - podman_container_effective.bootstrap_services is defined
+    - podman_container_effective.bootstrap_services | length > 0
+
+- name: "Checking bootstrap service manager support"
+  ansible.builtin.assert:
+    that:
+      - podman_container_systemctl_support.rc == 0
+    fail_msg: >-
+      bootstrap_services is experimental and requires a working systemctl
+      inside container {{ podman_container_effective.parameters.name }}
+  when:
+    - podman_container_effective.bootstrap_services is defined
+    - podman_container_effective.bootstrap_services | length > 0
+
+- name: "Enabling experimental bootstrap services inside container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "systemctl enable --now {{ item }}"
+  loop: "{{ podman_container_effective.bootstrap_services }}"
+  register: podman_bootstrap_services_result
+  changed_when: >-
+    'Created symlink' in (podman_bootstrap_services_result.stdout | default(''))
+    or 'Created symlink' in (podman_bootstrap_services_result.stderr | default(''))
+    or 'Started' in (podman_bootstrap_services_result.stdout | default(''))
+    or 'Started' in (podman_bootstrap_services_result.stderr | default(''))
+  when:
+    - podman_container_effective.bootstrap_services is defined
+    - podman_container_effective.bootstrap_services | length > 0

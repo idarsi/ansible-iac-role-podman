@@ -17,6 +17,36 @@
       - podman_container_record is defined
     fail_msg: "All tests did not pass"
 
+- name: "Resolving optional container preset"
+  ansible.builtin.set_fact:
+    podman_container_effective: >-
+      {{
+        (
+          podman_container_presets[podman_container_record.preset]
+          if (podman_container_record.preset is defined and podman_container_record.preset is not none)
+          else {}
+        ) | combine(podman_container_record, recursive=True)
+      }}
+
+- name: "Checking that container image or preset is valid"
+  ansible.builtin.assert:
+    that:
+      - podman_container_effective.image is defined
+      - (podman_container_effective.image | string | trim) != ""
+      - podman_container_effective.parameters is defined
+      - podman_container_effective.parameters.name is defined
+      - (podman_container_effective.parameters.name | string | trim) != ""
+      - >
+        (
+          podman_container_record.preset is not defined
+          or podman_container_record.preset is none
+          or podman_container_record.preset in podman_container_presets
+        )
+    fail_msg: >-
+      Podman container must define image directly or use a known preset from
+      podman_container_presets (requested preset:
+      {{ podman_container_record.preset | default('none') }})
+
 ###############################################################################
 # ENSURING CONTAINER IS PRESENT
 ###############################################################################
@@ -24,28 +54,39 @@
 - name: "Rendering configuration lines"
   ansible.builtin.set_fact:
     rendered_lines: |
-      {% for item in podman_container_record.parameters | dict2items if item.value is not none %}
+      {% for item in podman_container_effective.parameters | dict2items if item.value is not none %}
       {% if item.key == 'volume' and item.value is iterable and item.value is not string %}
       {% for volume in item.value %}
       --{{ item.key }} "{{ volume }}" \
       {% endfor %}
+      {% elif item.value is sameas true %}
+      --{{ item.key }} \
+      {% elif item.value is sameas false %}
       {% else %}
       --{{ item.key }} {{ item.value }} \
       {% endif %}
       {% endfor %}
-  when: podman_container_record.parameters is defined
+  when: podman_container_effective.parameters is defined
 
 - name: "Rendering environment variables for container"
   ansible.builtin.set_fact:
     rendered_lines: |
       {{ rendered_lines | default(omit) }} \
-      {% for item in podman_container_record.environment | dict2items if item.value is not none %}
+      {% for item in podman_container_effective.environment | dict2items if item.value is not none %}
       --env {{ item.key }}={{ item.value }} \
       {% endfor %}
-  when: podman_container_record.environment is defined
+  when: podman_container_effective.environment is defined
+
+- name: "Rendering optional post-image command arguments"
+  ansible.builtin.set_fact:
+    rendered_command: "{{ podman_container_effective.command }}"
+  when:
+    - podman_container_effective.command is defined
+    - podman_container_effective.command is not none
+    - (podman_container_effective.command | string | trim) != ""
 
 - name: "Checking container status"
-  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_record.parameters.name }}
+  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_effective.parameters.name }}
   register: container_active
   changed_when: false
   failed_when: false
@@ -54,7 +95,8 @@
   ansible.builtin.shell: >
     podman create -it
     {{ rendered_lines | default(omit) }}
-    {{ podman_container_record.image }}
+    {{ podman_container_effective.image }}
+    {{ rendered_command | default('') }}
   changed_when: true
   environment:
     http_proxy: "{{ http_proxy | default(omit) }}"
