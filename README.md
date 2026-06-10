@@ -86,12 +86,73 @@ iac_blueprint:
       - preset: rhel9
         parameters:
           name: "rhel9-sshd"
-        command: "sleep infinity"
+          systemd: always
+          privileged: true
+          volume:
+            - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
         bootstrap_packages:
           - openssh-server
         bootstrap_services:
           - sshd
 ```
+
+Systemd Inside Container
+------------------------
+
+If you want to run systemd-managed services inside the container, configure the
+container for systemd explicitly through `parameters`. The practical minimum is:
+
+- `systemd: always`
+- `privileged: true`
+- cgroup mount such as `"/sys/fs/cgroup:/sys/fs/cgroup:rw"`
+
+Example:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-systemd"
+          systemd: always
+          privileged: true
+          volume:
+            - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+```
+
+SSHD Example
+------------
+
+The following example shows a more complete container that:
+
+- uses the built-in `rhel9` preset
+- enables systemd mode
+- installs `openssh-server`
+- starts `sshd` through `systemctl`
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-sshd"
+          systemd: always
+          privileged: true
+          volume:
+            - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+        bootstrap_packages:
+          - openssh-server
+        bootstrap_services:
+          - sshd
+```
+
+Notes:
+
+- `bootstrap_packages` and `bootstrap_services` are still experimental
+- `bootstrap_services` assumes that `systemctl` is actually usable inside the image
+- for long-term stability, a prebuilt image is still the better choice than runtime mutation
 
 Container presets
 -----------------
