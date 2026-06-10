@@ -133,6 +133,7 @@ The following example shows a more complete container that:
 - generates a host-side ed25519 key and adds it to container root
   `authorized_keys`
 - adds the container SSH host key to host root's `known_hosts`
+- installs an sshd drop-in that explicitly allows root public key login
 
 ```yaml
 iac_blueprint:
@@ -161,6 +162,8 @@ Notes:
 - generated private keys are stored on the host under `/root/.ssh/` by default
 - published SSH endpoints such as `"2222:22"` are added to root's
   `known_hosts` as entries like `[127.0.0.1]:2222`
+- the role writes an sshd config drop-in for root public key access and
+  restarts `sshd` when that policy changes
 - for long-term stability, a prebuilt image is still the better choice than runtime mutation
 
 Experimental Root SSH Access
@@ -173,6 +176,7 @@ Container definitions may include an experimental top-level
 - stores the private key on the host under `/root/.ssh/` by default
 - copies the public key into container root's `authorized_keys`
 - records reachable container SSH host keys in host root's `known_hosts`
+- configures `sshd` inside the container for root public key login
 
 Optional key-path override:
 
