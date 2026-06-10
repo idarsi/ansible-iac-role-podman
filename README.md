@@ -132,6 +132,7 @@ The following example shows a more complete container that:
 - starts `sshd` through `systemctl`
 - generates a host-side ed25519 key and adds it to container root
   `authorized_keys`
+- adds the container SSH host key to host root's `known_hosts`
 
 ```yaml
 iac_blueprint:
@@ -140,6 +141,7 @@ iac_blueprint:
       - preset: rhel9
         parameters:
           name: "rhel9-sshd"
+          publish: "2222:22"
           systemd: always
           privileged: true
           volume:
@@ -157,6 +159,8 @@ Notes:
 - `bootstrap_ssh_root_access` is also experimental
 - `bootstrap_services` assumes that `systemctl` is actually usable inside the image
 - generated private keys are stored on the host under `/root/.ssh/` by default
+- published SSH endpoints such as `"2222:22"` are added to root's
+  `known_hosts` as entries like `[127.0.0.1]:2222`
 - for long-term stability, a prebuilt image is still the better choice than runtime mutation
 
 Experimental Root SSH Access
@@ -168,6 +172,7 @@ Container definitions may include an experimental top-level
 - generates an ed25519 key pair on the host if one does not already exist
 - stores the private key on the host under `/root/.ssh/` by default
 - copies the public key into container root's `authorized_keys`
+- records reachable container SSH host keys in host root's `known_hosts`
 
 Optional key-path override:
 
@@ -178,6 +183,7 @@ iac_blueprint:
       - preset: rhel9
         parameters:
           name: "rhel9-ssh"
+          publish: "2222:22"
         bootstrap_ssh_root_access: true
         bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_rhel9_ssh"
 ```
