@@ -27,6 +27,7 @@ servers:
               - openssh-server
             bootstrap_services:
               - sshd
+            bootstrap_ssh_root_access: true
           - image: "docker.io/metabase/metabase"
             parameters:
               name: "testi-2"

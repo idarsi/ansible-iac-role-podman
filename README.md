@@ -130,6 +130,8 @@ The following example shows a more complete container that:
 - enables systemd mode
 - installs `openssh-server`
 - starts `sshd` through `systemctl`
+- generates a host-side ed25519 key and adds it to container root
+  `authorized_keys`
 
 ```yaml
 iac_blueprint:
@@ -146,13 +148,45 @@ iac_blueprint:
           - openssh-server
         bootstrap_services:
           - sshd
+        bootstrap_ssh_root_access: true
 ```
 
 Notes:
 
 - `bootstrap_packages` and `bootstrap_services` are still experimental
+- `bootstrap_ssh_root_access` is also experimental
 - `bootstrap_services` assumes that `systemctl` is actually usable inside the image
+- generated private keys are stored on the host under `/root/.ssh/` by default
 - for long-term stability, a prebuilt image is still the better choice than runtime mutation
+
+Experimental Root SSH Access
+----------------------------
+
+Container definitions may include an experimental top-level
+`bootstrap_ssh_root_access: true` flag. When enabled, the role:
+
+- generates an ed25519 key pair on the host if one does not already exist
+- stores the private key on the host under `/root/.ssh/` by default
+- copies the public key into container root's `authorized_keys`
+
+Optional key-path override:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-ssh"
+        bootstrap_ssh_root_access: true
+        bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_rhel9_ssh"
+```
+
+By default the generated private key path is:
+
+```text
+/root/.ssh/id_ed25519_podman_<container-name>
+```
 
 Container presets
 -----------------
