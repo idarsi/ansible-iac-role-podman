@@ -133,3 +133,143 @@
   when:
     - podman_container_effective.bootstrap_services is defined
     - podman_container_effective.bootstrap_services | length > 0
+
+- name: "Preparing experimental root SSH access key paths"
+  ansible.builtin.set_fact:
+    podman_container_ssh_private_key_path: >-
+      {{
+        podman_container_effective.bootstrap_ssh_private_key_path
+        | default(
+            podman_container_generated_ssh_key_dir
+            ~ '/id_ed25519_podman_'
+            ~ (
+              podman_container_effective.parameters.name
+              | regex_replace('[^A-Za-z0-9._-]', '_')
+            )
+          )
+      }}
+    podman_container_ssh_public_key_path: >-
+      {{
+        (
+          podman_container_effective.bootstrap_ssh_private_key_path
+          | default(
+              podman_container_generated_ssh_key_dir
+              ~ '/id_ed25519_podman_'
+              ~ (
+                podman_container_effective.parameters.name
+                | regex_replace('[^A-Za-z0-9._-]', '_')
+              )
+            )
+        ) ~ '.pub'
+      }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Ensuring host SSH directory exists for generated container keys"
+  ansible.builtin.file:
+    path: "{{ podman_container_ssh_private_key_path | dirname }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Checking generated container SSH private key"
+  ansible.builtin.stat:
+    path: "{{ podman_container_ssh_private_key_path }}"
+  register: podman_container_ssh_private_key_stat
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Generating experimental root SSH key pair for container access"
+  ansible.builtin.command:
+    cmd: >-
+      ssh-keygen -q -t ed25519 -N '' -C
+      podman-root@{{ podman_container_effective.parameters.name }}
+      -f {{ podman_container_ssh_private_key_path }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - not podman_container_ssh_private_key_stat.stat.exists
+
+- name: "Checking generated container SSH public key"
+  ansible.builtin.stat:
+    path: "{{ podman_container_ssh_public_key_path }}"
+  register: podman_container_ssh_public_key_stat
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Deriving missing SSH public key from private key"
+  ansible.builtin.shell: >
+    ssh-keygen -y -f {{ podman_container_ssh_private_key_path }} >
+    {{ podman_container_ssh_public_key_path }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - not podman_container_ssh_public_key_stat.stat.exists
+
+- name: "Reading generated container SSH public key"
+  ansible.builtin.slurp:
+    path: "{{ podman_container_ssh_public_key_path }}"
+  register: podman_container_ssh_public_key_content
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Creating temporary authorized key file on host"
+  ansible.builtin.tempfile:
+    state: file
+    suffix: ".pub"
+  register: podman_container_authorized_key_tempfile
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Writing generated SSH public key to temporary host file"
+  ansible.builtin.copy:
+    dest: "{{ podman_container_authorized_key_tempfile.path }}"
+    content: "{{ podman_container_ssh_public_key_content.content | b64decode }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Ensuring container root SSH directory exists"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "mkdir -p /root/.ssh && chmod 700 /root/.ssh"
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Copying generated SSH public key into container"
+  ansible.builtin.command:
+    cmd: >-
+      podman cp {{ podman_container_authorized_key_tempfile.path }}
+      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-root-authorized-key.pub
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Installing generated SSH public key into container root authorized_keys"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "touch /root/.ssh/authorized_keys &&
+    chmod 600 /root/.ssh/authorized_keys &&
+    key_line=\$(cat /tmp/idarsi-root-authorized-key.pub) &&
+    if grep -qxF \"\$key_line\" /root/.ssh/authorized_keys 2>/dev/null; then
+      echo UNCHANGED;
+    else
+      printf '%s\n' \"\$key_line\" >> /root/.ssh/authorized_keys &&
+      echo CHANGED;
+    fi &&
+    rm -f /tmp/idarsi-root-authorized-key.pub"
+  register: podman_container_authorized_keys_result
+  changed_when: "'CHANGED' in (podman_container_authorized_keys_result.stdout | default(''))"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Removing temporary authorized key file from host"
+  ansible.builtin.file:
+    path: "{{ podman_container_authorized_key_tempfile.path }}"
+    state: absent
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)

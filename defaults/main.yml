@@ -51,3 +51,5 @@ podman_containers_conf: "/etc/containers/containers.conf"
 podman_container_presets:
   rhel9:
     image: "registry.access.redhat.com/ubi9-init"
+
+podman_container_generated_ssh_key_dir: "/root/.ssh"
