@@ -214,6 +214,24 @@
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
+- name: "Checking whether generated SSH public key is already installed in container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "mkdir -p /root/.ssh &&
+    chmod 700 /root/.ssh &&
+    touch /root/.ssh/authorized_keys &&
+    chmod 600 /root/.ssh/authorized_keys &&
+    key_line='{{ podman_container_ssh_public_key_content.content | b64decode | trim }}' &&
+    if grep -qxF \"\$key_line\" /root/.ssh/authorized_keys 2>/dev/null; then
+      echo PRESENT;
+    else
+      echo MISSING;
+    fi"
+  register: podman_container_authorized_key_presence
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
 - name: "Creating temporary authorized key file on host"
   ansible.builtin.tempfile:
     state: file
@@ -221,6 +239,7 @@
   register: podman_container_authorized_key_tempfile
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_authorized_key_presence.stdout != "PRESENT"
 
 - name: "Writing generated SSH public key to temporary host file"
   ansible.builtin.copy:
@@ -231,6 +250,7 @@
     mode: "0600"
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_authorized_key_presence.stdout != "PRESENT"
 
 - name: "Ensuring container root SSH directory exists"
   ansible.builtin.shell: >
@@ -248,6 +268,7 @@
   changed_when: false
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_authorized_key_presence.stdout != "PRESENT"
 
 - name: "Installing generated SSH public key into container root authorized_keys"
   ansible.builtin.shell: >
@@ -266,6 +287,7 @@
   changed_when: "'CHANGED' in (podman_container_authorized_keys_result.stdout | default(''))"
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_authorized_key_presence.stdout != "PRESENT"
 
 - name: "Removing temporary authorized key file from host"
   ansible.builtin.file:
@@ -273,3 +295,4 @@
     state: absent
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_authorized_key_presence.stdout != "PRESENT"

@@ -1,0 +1,58 @@
+---
+- name: Converge
+  hosts: all
+  become: false
+  vars:
+    state: install
+    podman_skip_container_guard: true
+    podman_container_presets:
+      rhel9:
+        image: "docker.io/library/alpine:latest"
+    iac_blueprint:
+      podman:
+        configuration:
+          network:
+            network_backend: "netavark"
+        directories:
+          - path: /tmp/podman-molecule
+            owner: root
+            group: root
+            mode: "0750"
+        files:
+          - path: /tmp/podman-molecule/example.txt
+            content: "molecule\n"
+            owner: root
+            group: root
+            mode: "0640"
+        cron:
+          - name: podman_molecule_heartbeat
+            user: root
+            minute: "0"
+            hour: "3"
+            job: "/bin/true"
+            cron_file: podman_molecule_heartbeat
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "molecule-rhel9"
+            command: "sleep infinity"
+  pre_tasks:
+    - name: "Ensuring Podman configuration directory exists"
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Forcing vfs storage driver for nested Podman tests"
+      ansible.builtin.copy:
+        dest: /etc/containers/storage.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [storage]
+          driver = "vfs"
+  roles:
+    - role: ansible-iac-role-podman
