@@ -162,6 +162,10 @@
             )
         ) ~ '.pub'
       }}
+    podman_container_ssh_known_hosts_path: >-
+      {{
+        podman_container_generated_ssh_key_dir ~ '/known_hosts'
+      }}
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
@@ -174,6 +178,145 @@
     mode: "0700"
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Ensuring SSH client tools are installed for host key scanning"
+  ansible.builtin.include_tasks: package_present.yml
+  vars:
+    iac_package: "openssh-clients"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Detecting container IP address for SSH access"
+  ansible.builtin.command: >-
+    podman inspect --format
+    {{ "'{{range .NetworkSettings.Networks}}{{.IPAddress}}{{\"\\n\"}}{{end}}'" }}
+    {{ podman_container_effective.parameters.name }}
+  register: podman_container_ssh_container_ips
+  changed_when: false
+  failed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Building SSH known_hosts scan target list"
+  ansible.builtin.set_fact:
+    podman_container_ssh_scan_targets: >-
+      {%- set targets = [] -%}
+      {%- set publish_values = podman_container_effective.parameters.publish
+            if (
+              podman_container_effective.parameters is defined
+              and podman_container_effective.parameters.publish is defined
+            )
+            else [] -%}
+      {%- if publish_values is string -%}
+      {%- set publish_values = [publish_values] -%}
+      {%- endif -%}
+      {%- for publish_value in publish_values -%}
+      {%- set publish_parts = (publish_value | string | trim).split(':') -%}
+      {%- if publish_parts | length == 2 and publish_parts[1] == '22' -%}
+      {%- set target_host = '127.0.0.1' -%}
+      {%- set host_port = publish_parts[0] | trim -%}
+      {%- set _ = targets.append({
+            'scan_host': target_host,
+            'scan_port': host_port,
+            'known_host_name': '[' ~ target_host ~ ']:' ~ host_port
+          }) -%}
+      {%- elif publish_parts | length == 3 and publish_parts[2] == '22' -%}
+      {%- set host_ip = publish_parts[0] | trim -%}
+      {%- set target_host = '127.0.0.1' if host_ip in ['', '0.0.0.0', '::', ':::'] else host_ip -%}
+      {%- set host_port = publish_parts[1] | trim -%}
+      {%- set _ = targets.append({
+            'scan_host': target_host,
+            'scan_port': host_port,
+            'known_host_name': '[' ~ target_host ~ ']:' ~ host_port
+          }) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- for ip_addr in (podman_container_ssh_container_ips.stdout_lines | default([])) -%}
+      {%- if (ip_addr | string | trim) != '' -%}
+      {%- set trimmed_ip = ip_addr | trim -%}
+      {%- set _ = targets.append({
+            'scan_host': trimmed_ip,
+            'scan_port': '22',
+            'known_host_name': trimmed_ip
+          }) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ targets | unique }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Checking SSH scan target availability"
+  ansible.builtin.wait_for:
+    host: "{{ item.scan_host }}"
+    port: "{{ item.scan_port | int }}"
+    state: started
+    timeout: 10
+  loop: "{{ podman_container_ssh_scan_targets | default([]) }}"
+  loop_control:
+    label: "{{ item.known_host_name }}"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - (podman_container_ssh_scan_targets | default([])) | length > 0
+
+- name: "Scanning SSH host keys for container access targets"
+  ansible.builtin.command: >-
+    ssh-keyscan -p {{ item.scan_port }} {{ item.scan_host }}
+  register: podman_container_ssh_keyscan_results
+  changed_when: false
+  loop: "{{ podman_container_ssh_scan_targets | default([]) }}"
+  loop_control:
+    label: "{{ item.known_host_name }}"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - (podman_container_ssh_scan_targets | default([])) | length > 0
+
+- name: "Building normalized known_hosts entries for scanned container SSH host keys"
+  ansible.builtin.set_fact:
+    podman_container_ssh_known_host_entries: >-
+      {%- set entries = [] -%}
+      {%- for result in (podman_container_ssh_keyscan_results.results | default([])) -%}
+      {%- if result.rc == 0 -%}
+      {%- for line in (result.stdout_lines | default([])) -%}
+      {%- set line_parts = line.split() -%}
+      {%- if
+            (line_parts | length) >= 3
+            and (
+              line_parts[1] is match('^(ssh-(rsa|dss|ed25519)|ecdsa-sha2-[^[:space:]]+|sk-(ecdsa|ssh)-[^[:space:]]+)$')
+            )
+         -%}
+      {%- set normalized_line =
+            (
+              result.item.known_host_name ~ ' '
+              ~ line_parts[1] ~ ' '
+              ~ line_parts[2]
+            ) | trim -%}
+      {%- if normalized_line != '' -%}
+      {%- set _ = entries.append({
+            'name': result.item.known_host_name,
+            'key': normalized_line
+          }) -%}
+      {%- endif -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ entries }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - (podman_container_ssh_scan_targets | default([])) | length > 0
+
+- name: "Ensuring root known_hosts contains scanned container SSH host keys"
+  ansible.builtin.known_hosts:
+    path: "{{ podman_container_ssh_known_hosts_path }}"
+    name: "{{ item.name }}"
+    key: "{{ item.key }}"
+    state: present
+  loop: "{{ podman_container_ssh_known_host_entries | default([]) }}"
+  loop_control:
+    label: "{{ item.name }}"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - (podman_container_ssh_known_host_entries | default([])) | length > 0
 
 - name: "Checking generated container SSH private key"
   ansible.builtin.stat:

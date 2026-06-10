@@ -44,6 +44,7 @@ servers:
           - preset: rhel9
             parameters:
               name: "test-systemd"
+              publish: "2222:22"
               systemd: always
               privileged: true
               volume:

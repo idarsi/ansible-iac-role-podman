@@ -17,6 +17,7 @@
           - preset: rhel9
             parameters:
               name: "molecule-rhel9-experimental"
+              publish: "2222:22"
               systemd: always
               privileged: true
               volume:

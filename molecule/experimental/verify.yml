@@ -6,6 +6,7 @@
     podman_experimental_container_name: "molecule-rhel9-experimental"
     podman_experimental_private_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental"
     podman_experimental_public_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental.pub"
+    podman_experimental_known_hosts_path: "/root/.ssh/known_hosts"
   tasks:
     - name: "Checking experimental container status"
       ansible.builtin.command: >-
@@ -58,6 +59,17 @@
       register: podman_experimental_authorized_keys
       changed_when: false
 
+    - name: "Checking generated known_hosts file on host"
+      ansible.builtin.stat:
+        path: "{{ podman_experimental_known_hosts_path }}"
+      register: podman_experimental_known_hosts_stat
+
+    - name: "Reading generated known_hosts file on host"
+      ansible.builtin.slurp:
+        path: "{{ podman_experimental_known_hosts_path }}"
+      register: podman_experimental_known_hosts
+      when: podman_experimental_known_hosts_stat.stat.exists
+
     - name: "Verifying experimental Podman state"
       ansible.builtin.assert:
         that:
@@ -67,5 +79,7 @@
           - podman_experimental_sshd_active.stdout == "active"
           - podman_experimental_private_key_stat.stat.exists
           - podman_experimental_public_key_stat.stat.exists
+          - podman_experimental_known_hosts_stat.stat.exists
           - (podman_experimental_public_key.content | b64decode | trim) in (podman_experimental_authorized_keys.stdout | default(''))
+          - "'[127.0.0.1]:2222' in (podman_experimental_known_hosts.content | b64decode)"
         fail_msg: "Podman experimental Molecule verification failed"
