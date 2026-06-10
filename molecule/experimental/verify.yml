@@ -70,6 +70,19 @@
       register: podman_experimental_known_hosts
       when: podman_experimental_known_hosts_stat.stat.exists
 
+    - name: "Verifying SSH login from host root to experimental container root"
+      ansible.builtin.command: >-
+        ssh -i {{ podman_experimental_private_key_path }}
+        -o BatchMode=yes
+        -o StrictHostKeyChecking=yes
+        -o UserKnownHostsFile={{ podman_experimental_known_hosts_path }}
+        -o PreferredAuthentications=publickey
+        -p 2222
+        root@127.0.0.1
+        true
+      register: podman_experimental_ssh_login
+      changed_when: false
+
     - name: "Verifying experimental Podman state"
       ansible.builtin.assert:
         that:
@@ -82,4 +95,5 @@
           - podman_experimental_known_hosts_stat.stat.exists
           - (podman_experimental_public_key.content | b64decode | trim) in (podman_experimental_authorized_keys.stdout | default(''))
           - "'[127.0.0.1]:2222' in (podman_experimental_known_hosts.content | b64decode)"
+          - podman_experimental_ssh_login.rc == 0
         fail_msg: "Podman experimental Molecule verification failed"
