@@ -212,6 +212,159 @@ Default built-in presets:
 
 - `rhel9` -> `registry.access.redhat.com/ubi9-init`
 
+Reference examples:
+
+- Inventory example: [docs/inventory-example.yml](docs/inventory-example.yml)
+- Playbook example: [docs/playbook-example.yml](docs/playbook-example.yml)
+
+Inventory Structure
+-------------------
+
+The role reads Podman configuration from `iac_blueprint.podman`.
+
+Top-level structure:
+
+```yaml
+iac_blueprint:
+  podman:
+    configuration:
+      network:
+        network_backend: "netavark"
+        default_subnet: 10.168.0.0/24
+        default_gateway: 10.168.0.1
+    directories:
+      - path: /opt/example
+        owner: root
+        group: root
+        mode: "0750"
+    files:
+      - path: /opt/example/app.env
+        content: |
+          EXAMPLE=true
+        owner: root
+        group: root
+        mode: "0640"
+    cron:
+      - name: podman_heartbeat
+        user: root
+        minute: "0"
+        hour: "3"
+        job: "/bin/true"
+        cron_file: podman_heartbeat
+    containers:
+      - image: "docker.io/library/alpine:latest"
+        parameters:
+          name: "example-container"
+        command: "sleep infinity"
+```
+
+Supported top-level keys under `iac_blueprint.podman`:
+
+- `configuration`: Podman host configuration rendered to
+  `/etc/containers/containers.conf`
+- `directories`: filesystem directories managed on the host
+- `files`: filesystem files with inline `content` managed on the host
+- `cron`: cron entries managed on the host
+- `containers`: list of container definitions managed by the role
+
+Container definition structure:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        image: "docker.io/library/alpine:latest"
+        parameters:
+          name: "example-container"
+          hostname: "example-container"
+          ip: 10.168.0.100
+          publish: "8080:80"
+          privileged: true
+          systemd: always
+          volume:
+            - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+        environment:
+          APP_ENV: production
+          APP_PORT: "8080"
+        command: "sleep infinity"
+        bootstrap_packages:
+          - openssh-server
+        bootstrap_services:
+          - sshd
+        bootstrap_ssh_root_access: true
+        bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_example_container"
+```
+
+Supported container keys:
+
+- `preset`: optional preset resolved from `podman_container_presets`
+- `image`: explicit image reference; may be omitted when `preset` provides it
+- `parameters`: arguments rendered into `podman create`
+- `environment`: optional environment variables passed with `--env`
+- `command`: optional post-image command string
+- `bootstrap_packages`: optional experimental packages installed inside the
+  running container
+- `bootstrap_services`: optional experimental services enabled and started
+  inside the running container
+- `bootstrap_ssh_root_access`: optional experimental root SSH key bootstrap
+- `bootstrap_ssh_private_key_path`: optional override for the generated host
+  private key path
+
+Notes about `parameters`:
+
+- scalar values become `--key value`
+- boolean `true` values become flag-style `--key`
+- boolean `false` values are omitted
+- `volume` may be a list and is rendered as repeated `--volume` arguments
+- `parameters.name` is required for container lifecycle states
+
+Typical inventory patterns:
+
+- Minimal container:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - image: "docker.io/library/alpine:latest"
+        parameters:
+          name: "minimal"
+        command: "sleep infinity"
+```
+
+- Preset-based container:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-init"
+          publish: "8080:80"
+```
+
+- Systemd-enabled service container:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-sshd"
+          systemd: always
+          privileged: true
+          volume:
+            - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+        bootstrap_packages:
+          - openssh-server
+        bootstrap_services:
+          - sshd
+        bootstrap_ssh_root_access: true
+```
+
 Requirements
 ------------
 
@@ -226,3 +379,55 @@ Code Quality
 ------------
 
 This project adheres to the [Ansible Lint](https://ansible-lint.readthedocs.io) **production** profile, ensuring high-quality and production-ready configuration management.
+
+Role Testing
+------------
+
+This role includes Molecule scenarios for both baseline and experimental
+coverage:
+
+- `molecule/default` validates the install path, managed filesystem resources,
+  cron entries, and a basic running container
+- `molecule/lifecycle` validates `container_present`, `container_started`,
+  `container_stopped`, and `container_absent`
+- `molecule/experimental` validates `bootstrap_packages`,
+  `bootstrap_services`, and `bootstrap_ssh_root_access`
+
+Run locally from the role directory:
+
+```bash
+molecule test
+```
+
+Run a specific scenario:
+
+```bash
+molecule test -s default
+molecule test -s lifecycle
+molecule test -s experimental
+```
+
+Recommended use cases:
+
+- Use `molecule test -s default` when validating the baseline role behavior:
+  package installation, rendered configuration, managed filesystem resources,
+  cron entries, and a simple running container
+- Use `molecule test -s lifecycle` when changing role state-routing or
+  container lifecycle behavior and you need coverage for
+  `container_present`, `container_started`, `container_stopped`, and
+  `container_absent`
+- Use `molecule test -s experimental` when touching experimental bootstrap
+  features such as package installation inside the container, service enable
+  and start operations, or generated root SSH access
+- Use `molecule test` when you want the broadest local regression check across
+  all scenarios
+
+The role normally stops early when executed inside a containerized host. The
+Molecule scenario opts in to bypass that guard by setting:
+
+```yaml
+podman_skip_container_guard: true
+```
+
+Keep this override limited to test scenarios. Production inventories should
+continue using the default `false` value.

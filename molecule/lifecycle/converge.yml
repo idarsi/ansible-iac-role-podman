@@ -1,0 +1,145 @@
+---
+- name: Prepare lifecycle host
+  hosts: all
+  become: false
+  tasks:
+    - name: "Ensuring Podman configuration directory exists"
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Forcing vfs storage driver for nested Podman tests"
+      ansible.builtin.copy:
+        dest: /etc/containers/storage.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [storage]
+          driver = "vfs"
+
+- name: Ensure Podman installation is present
+  hosts: all
+  become: false
+  vars:
+    state: present
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        configuration:
+          network:
+            network_backend: "netavark"
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-rhel9-lifecycle"
+            command: "sleep infinity"
+  roles:
+    - role: ansible-iac-role-podman
+
+- name: Ensure lifecycle container is created
+  hosts: all
+  become: false
+  vars:
+    state: container_present
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-rhel9-lifecycle"
+            command: "sleep infinity"
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking lifecycle container exists after create"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{ .State.Status }}" }}'
+        molecule-rhel9-lifecycle
+      register: podman_lifecycle_created_status
+      changed_when: false
+
+    - name: "Verifying lifecycle container create state"
+      ansible.builtin.assert:
+        that:
+          - podman_lifecycle_created_status.rc == 0
+          - podman_lifecycle_created_status.stdout in ["created", "configured", "exited"]
+        fail_msg: "Lifecycle scenario failed to create container"
+
+- name: Ensure lifecycle container is started
+  hosts: all
+  become: false
+  vars:
+    state: container_started
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-rhel9-lifecycle"
+            command: "sleep infinity"
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking lifecycle container running state"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{ .State.Status }}" }}'
+        molecule-rhel9-lifecycle
+      register: podman_lifecycle_running_status
+      changed_when: false
+
+    - name: "Verifying lifecycle container started state"
+      ansible.builtin.assert:
+        that:
+          - podman_lifecycle_running_status.stdout == "running"
+        fail_msg: "Lifecycle scenario failed to start container"
+
+- name: Ensure lifecycle container is stopped
+  hosts: all
+  become: false
+  vars:
+    state: container_stopped
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-rhel9-lifecycle"
+            command: "sleep infinity"
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking lifecycle container stopped state"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{ .State.Status }}" }}'
+        molecule-rhel9-lifecycle
+      register: podman_lifecycle_stopped_status
+      changed_when: false
+
+    - name: "Verifying lifecycle container stopped state"
+      ansible.builtin.assert:
+        that:
+          - podman_lifecycle_stopped_status.stdout in ["exited", "stopped"]
+        fail_msg: "Lifecycle scenario failed to stop container"
+
+- name: Ensure lifecycle container is removed
+  hosts: all
+  become: false
+  vars:
+    state: container_absent
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-rhel9-lifecycle"
+            command: "sleep infinity"
+  roles:
+    - role: ansible-iac-role-podman

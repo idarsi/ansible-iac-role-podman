@@ -13,7 +13,9 @@
 
 - name: "Checking if we are in container"
   ansible.builtin.meta: end_play
-  when: ansible_facts["virtualization_type"]  in ["docker", "podman", "lxc"]
+  when:
+    - ansible_facts["virtualization_type"] in ["docker", "podman", "lxc"]
+    - not (podman_skip_container_guard | default(false) | bool)
 
 - name: "Checking if operating system is supported"
   ansible.builtin.fail:

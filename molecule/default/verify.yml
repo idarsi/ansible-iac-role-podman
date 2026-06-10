@@ -1,0 +1,68 @@
+---
+- name: Verify
+  hosts: all
+  become: false
+  tasks:
+    - name: "Checking podman package is installed"
+      ansible.builtin.command: rpm -q podman
+      register: podman_package
+      changed_when: false
+
+    - name: "Checking Podman configuration file"
+      ansible.builtin.stat:
+        path: /etc/containers/containers.conf
+      register: podman_config_stat
+
+    - name: "Reading Podman configuration file"
+      ansible.builtin.slurp:
+        path: /etc/containers/containers.conf
+      register: podman_config
+      when: podman_config_stat.stat.exists
+
+    - name: "Checking managed directory"
+      ansible.builtin.stat:
+        path: /tmp/podman-molecule
+      register: podman_directory_stat
+
+    - name: "Checking managed file"
+      ansible.builtin.stat:
+        path: /tmp/podman-molecule/example.txt
+      register: podman_file_stat
+
+    - name: "Reading managed file"
+      ansible.builtin.slurp:
+        path: /tmp/podman-molecule/example.txt
+      register: podman_file
+      when: podman_file_stat.stat.exists
+
+    - name: "Checking managed cron file"
+      ansible.builtin.stat:
+        path: /etc/cron.d/podman_molecule_heartbeat
+      register: podman_cron_stat
+
+    - name: "Reading managed cron file"
+      ansible.builtin.slurp:
+        path: /etc/cron.d/podman_molecule_heartbeat
+      register: podman_cron
+      when: podman_cron_stat.stat.exists
+
+    - name: "Checking test container status"
+      ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' molecule-rhel9
+      register: podman_container_status
+      changed_when: false
+
+    - name: "Verifying managed Podman state"
+      ansible.builtin.assert:
+        that:
+          - podman_package.rc == 0
+          - podman_config_stat.stat.exists
+          - "'[network]' in (podman_config.content | b64decode)"
+          - "'network_backend = \"netavark\"' in (podman_config.content | b64decode)"
+          - podman_directory_stat.stat.exists
+          - podman_directory_stat.stat.isdir
+          - podman_file_stat.stat.exists
+          - "(podman_file.content | b64decode) == 'molecule\n'"
+          - podman_cron_stat.stat.exists
+          - "'/bin/true' in (podman_cron.content | b64decode)"
+          - podman_container_status.stdout == "running"
+        fail_msg: "Podman Molecule verification failed"

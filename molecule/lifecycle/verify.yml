@@ -1,0 +1,18 @@
+---
+- name: Verify
+  hosts: all
+  become: false
+  tasks:
+    - name: "Checking lifecycle container is absent"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{ .State.Status }}" }}'
+        molecule-rhel9-lifecycle
+      register: podman_lifecycle_absent_status
+      changed_when: false
+      failed_when: false
+
+    - name: "Verifying lifecycle container absence"
+      ansible.builtin.assert:
+        that:
+          - podman_lifecycle_absent_status.rc != 0
+        fail_msg: "Lifecycle scenario failed to remove container"

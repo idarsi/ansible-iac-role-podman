@@ -7,15 +7,40 @@ servers:
       podman:
         configuration:
           network:
+            network_backend: netavark
             default_subnet: 10.168.0.0/24
             default_gateway: 10.168.0.1
+        directories:
+          - path: /opt/idarsi/podman
+            owner: root
+            group: root
+            mode: "0750"
+        files:
+          - path: /opt/idarsi/podman/example.env
+            content: |
+              EXAMPLE=true
+              EXAMPLE_PORT=8080
+            owner: root
+            group: root
+            mode: "0640"
+        cron:
+          - name: podman_heartbeat
+            user: root
+            minute: "0"
+            hour: "3"
+            job: "/bin/true"
+            cron_file: podman_heartbeat
         containers:
           - preset: rhel9
             parameters:
               name: "test-1"
               hostname: "test-1"
               ip: 10.168.0.100
-              publish: 8080:80
+              publish: "8080:80"
+            environment:
+              APP_ENV: production
+              APP_PORT: "8080"
+            command: "sleep infinity"
           - preset: rhel9
             parameters:
               name: "test-systemd"
@@ -28,7 +53,11 @@ servers:
             bootstrap_services:
               - sshd
             bootstrap_ssh_root_access: true
+            bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_test_systemd"
           - image: "docker.io/metabase/metabase"
             parameters:
-              name: "testi-2"
+              name: "test-2"
               ip: 10.168.0.101
+              publish: "3000:3000"
+            environment:
+              MB_JETTY_PORT: "3000"

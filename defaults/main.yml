@@ -43,6 +43,7 @@ iac_ansible_report: true
 iac_ansible_report_tasks_path: "/root/ansible-report-tasks.log"
 
 podman_containers_conf: "/etc/containers/containers.conf"
+podman_skip_container_guard: false
 
 ###############################################################################
 # CONTAINER PRESETS

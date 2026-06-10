@@ -1,7 +1,56 @@
 ---
-- hosts: servers
+- name: Install Podman and create configured containers
+  hosts: servers
   become: true
-
   roles:
-  - role: ansible-iac-role-podman
-    state: install
+    - role: ansible-iac-role-podman
+      state: install
+
+- name: Ensure only Podman host-side configuration is present
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: present
+
+- name: Create configured containers without starting from full install flow
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: container_present
+
+- name: Start configured containers
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: container_started
+
+- name: Stop configured containers
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: container_stopped
+
+- name: Remove configured containers
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: container_absent
+
+- name: Remove Podman host-side configuration and package
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: absent
+
+- name: Remove everything managed by the role
+  hosts: servers
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: uninstall
