@@ -130,9 +130,9 @@ The following example shows a more complete container that:
 - enables systemd mode
 - installs `openssh-server`
 - starts `sshd` through `systemctl`
-- generates a host-side ed25519 key and adds it to container root
+- generates an ed25519 key for the host SSH login user and adds it to container root
   `authorized_keys`
-- adds the container SSH host key to host root's `known_hosts`
+- adds the container SSH host key to the host SSH login user's `known_hosts`
 - installs an sshd drop-in that explicitly allows root public key login
 
 ```yaml
@@ -159,9 +159,15 @@ Notes:
 - `bootstrap_packages` and `bootstrap_services` are still experimental
 - `bootstrap_ssh_root_access` is also experimental
 - `bootstrap_services` assumes that `systemctl` is actually usable inside the image
-- generated private keys are stored on the host under `/root/.ssh/` by default
-- published SSH endpoints such as `"2222:22"` are added to root's
-  `known_hosts` as entries like `[127.0.0.1]:2222`
+- generated private keys are stored under the host SSH login user's `.ssh/`
+  directory by default
+- published SSH endpoints such as `"2222:22"` are added to the host SSH login
+  user's `known_hosts` as entries like `[127.0.0.1]:2222`
+- if the SSH login user is `root`, the default paths still resolve under
+  `/root/.ssh/`
+- if you override the generated private key path, `known_hosts` defaults to the
+  same directory unless `bootstrap_ssh_known_hosts_path` is also set
+- generated private keys should be used with `ssh -i <private-key-path>`
 - the role writes an sshd config drop-in for root public key access and
   restarts `sshd` when that policy changes
 - for long-term stability, a prebuilt image is still the better choice than runtime mutation
@@ -173,9 +179,11 @@ Container definitions may include an experimental top-level
 `bootstrap_ssh_root_access: true` flag. When enabled, the role:
 
 - generates an ed25519 key pair on the host if one does not already exist
-- stores the private key on the host under `/root/.ssh/` by default
+- stores the private key under the host SSH login user's `.ssh/` directory by
+  default
 - copies the public key into container root's `authorized_keys`
-- records reachable container SSH host keys in host root's `known_hosts`
+- records reachable container SSH host keys in the host SSH login user's
+  `known_hosts`
 - configures `sshd` inside the container for root public key login
 
 Optional key-path override:
@@ -189,20 +197,21 @@ iac_blueprint:
           name: "rhel9-ssh"
           publish: "2222:22"
         bootstrap_ssh_root_access: true
-        bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_rhel9_ssh"
+        bootstrap_ssh_private_key_path: "/home/automation/.ssh/id_ed25519_rhel9_ssh"
+        bootstrap_ssh_known_hosts_path: "/home/automation/.ssh/known_hosts"
 ```
 
 By default the generated private key path is:
 
 ```text
-/root/.ssh/id_ed25519_podman_<container-name>
+<ssh-login-user-home>/.ssh/id_ed25519_podman_<container-name>
 ```
 
 Example SSH commands from the host:
 
 ```bash
-ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd -p 2222 root@127.0.0.1
-ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd root@10.108.0.100
+ssh -i /home/automation/.ssh/id_ed25519_podman_rhel9-sshd -p 2222 root@127.0.0.1
+ssh -i /home/automation/.ssh/id_ed25519_podman_rhel9-sshd root@10.108.0.100
 ```
 
 Notes:
@@ -317,7 +326,8 @@ iac_blueprint:
         bootstrap_services:
           - sshd
         bootstrap_ssh_root_access: true
-        bootstrap_ssh_private_key_path: "/root/.ssh/id_ed25519_example_container"
+        bootstrap_ssh_private_key_path: "/home/automation/.ssh/id_ed25519_example_container"
+        bootstrap_ssh_known_hosts_path: "/home/automation/.ssh/known_hosts"
 ```
 
 Supported container keys:
@@ -334,6 +344,8 @@ Supported container keys:
 - `bootstrap_ssh_root_access`: optional experimental root SSH key bootstrap
 - `bootstrap_ssh_private_key_path`: optional override for the generated host
   private key path
+- `bootstrap_ssh_known_hosts_path`: optional override for the host-side
+  `known_hosts` path used for container root SSH access
 
 Notes about `parameters`:
 
@@ -419,6 +431,12 @@ coverage:
   SSH port
 - `molecule/experimental-ip` validates `bootstrap_ssh_root_access` through
   direct container IP access without `publish`
+- `molecule/experimental-host-user` validates that `bootstrap_ssh_root_access`
+  writes host-side key material and `known_hosts` under a non-root SSH login
+  user home
+- `molecule/experimental-rhel9-preset` validates `bootstrap_ssh_root_access`
+  against the role's default `rhel9` preset image through direct container IP
+  access
 
 Run locally from the role directory:
 
@@ -433,6 +451,8 @@ molecule test -s default
 molecule test -s lifecycle
 molecule test -s experimental
 molecule test -s experimental-ip
+molecule test -s experimental-host-user
+molecule test -s experimental-rhel9-preset
 ```
 
 Recommended use cases:
@@ -449,6 +469,11 @@ Recommended use cases:
   and start operations, or generated root SSH access
 - Use `molecule test -s experimental-ip` when touching direct container IP
   SSH access or `known_hosts` behavior without a published SSH port
+- Use `molecule test -s experimental-host-user` when touching default
+  host-side SSH key paths, ownership, or host login user behavior
+- Use `molecule test -s experimental-rhel9-preset` when validating the
+  default `rhel9` preset image behavior instead of the Rocky-based nested test
+  image override
 - Use `molecule test` when you want the broadest local regression check across
   all scenarios
 

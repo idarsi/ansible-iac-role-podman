@@ -136,11 +136,86 @@
 
 - name: "Preparing experimental root SSH access key paths"
   ansible.builtin.set_fact:
+    podman_container_ssh_host_user: >-
+      {{
+        podman_container_ssh_host_user_override
+        | default(None, true)
+        | default(
+        ansible_user
+        | default(ansible_ssh_user, true)
+        | default(ansible_env.SUDO_USER, true)
+        | default(ansible_user_id),
+        true
+        )
+      }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Reading host SSH bootstrap user account entry"
+  ansible.builtin.command:
+    cmd: "getent passwd {{ podman_container_ssh_host_user }}"
+  register: podman_container_ssh_host_user_passwd
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Reading host SSH bootstrap user primary group"
+  ansible.builtin.command:
+    cmd: "id -gn {{ podman_container_ssh_host_user }}"
+  register: podman_container_ssh_host_user_group
+  changed_when: false
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Resolving experimental root SSH access host paths"
+  ansible.builtin.set_fact:
+    podman_container_ssh_host_home: >-
+      {{
+        (podman_container_ssh_host_user_passwd.stdout.split(':'))[5]
+      }}
+    podman_container_ssh_host_group: >-
+      {{
+        podman_container_ssh_host_user_group.stdout | trim
+      }}
+    podman_container_ssh_dir: >-
+      {{
+        (
+          (
+            podman_container_effective.bootstrap_ssh_private_key_path
+            | dirname
+          )
+          if (
+            podman_container_effective.bootstrap_ssh_private_key_path is defined
+            and (podman_container_effective.bootstrap_ssh_private_key_path | string | trim) != ''
+          )
+          else
+          (
+            (
+              (podman_container_ssh_host_user_passwd.stdout.split(':'))[5]
+            ) ~ '/.ssh'
+          )
+        )
+      }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Checking resolved host SSH bootstrap paths"
+  ansible.builtin.assert:
+    that:
+      - (podman_container_ssh_host_home | string | trim) != ""
+      - (podman_container_ssh_host_group | string | trim) != ""
+      - (podman_container_ssh_dir | string | trim) != ""
+    fail_msg: "Could not resolve host SSH bootstrap user paths"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Preparing experimental root SSH access key paths"
+  ansible.builtin.set_fact:
     podman_container_ssh_private_key_path: >-
       {{
         podman_container_effective.bootstrap_ssh_private_key_path
         | default(
-            podman_container_generated_ssh_key_dir
+            podman_container_ssh_dir
             ~ '/id_ed25519_podman_'
             ~ (
               podman_container_effective.parameters.name
@@ -153,7 +228,7 @@
         (
           podman_container_effective.bootstrap_ssh_private_key_path
           | default(
-              podman_container_generated_ssh_key_dir
+              podman_container_ssh_dir
               ~ '/id_ed25519_podman_'
               ~ (
                 podman_container_effective.parameters.name
@@ -162,9 +237,15 @@
             )
         ) ~ '.pub'
       }}
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Preparing experimental root SSH access known_hosts path"
+  ansible.builtin.set_fact:
     podman_container_ssh_known_hosts_path: >-
       {{
-        podman_container_generated_ssh_key_dir ~ '/known_hosts'
+        podman_container_effective.bootstrap_ssh_known_hosts_path
+        | default((podman_container_ssh_private_key_path | dirname) ~ '/known_hosts')
       }}
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
@@ -173,8 +254,8 @@
   ansible.builtin.file:
     path: "{{ podman_container_ssh_private_key_path | dirname }}"
     state: directory
-    owner: root
-    group: root
+    owner: "{{ podman_container_ssh_host_user }}"
+    group: "{{ podman_container_ssh_host_group }}"
     mode: "0700"
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
@@ -404,8 +485,8 @@
   ansible.builtin.copy:
     dest: "{{ podman_container_ssh_known_hosts_path }}"
     content: "{{ podman_container_rendered_known_hosts_content ~ '\n' }}"
-    owner: root
-    group: root
+    owner: "{{ podman_container_ssh_host_user }}"
+    group: "{{ podman_container_ssh_host_group }}"
     mode: "0600"
   register: podman_container_known_hosts_write_result
   when:
@@ -438,6 +519,23 @@
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
     - not podman_container_ssh_private_key_stat.stat.exists
 
+- name: "Re-checking generated container SSH private key"
+  ansible.builtin.stat:
+    path: "{{ podman_container_ssh_private_key_path }}"
+  register: podman_container_ssh_private_key_stat_after_generation
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Ensuring generated container SSH private key ownership and mode"
+  ansible.builtin.file:
+    path: "{{ podman_container_ssh_private_key_path }}"
+    owner: "{{ podman_container_ssh_host_user }}"
+    group: "{{ podman_container_ssh_host_group }}"
+    mode: "0600"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_ssh_private_key_stat_after_generation.stat.exists
+
 - name: "Checking generated container SSH public key"
   ansible.builtin.stat:
     path: "{{ podman_container_ssh_public_key_path }}"
@@ -452,6 +550,23 @@
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
     - not podman_container_ssh_public_key_stat.stat.exists
+
+- name: "Re-checking generated container SSH public key"
+  ansible.builtin.stat:
+    path: "{{ podman_container_ssh_public_key_path }}"
+  register: podman_container_ssh_public_key_stat_after_generation
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
+- name: "Ensuring generated container SSH public key ownership and mode"
+  ansible.builtin.file:
+    path: "{{ podman_container_ssh_public_key_path }}"
+    owner: "{{ podman_container_ssh_host_user }}"
+    group: "{{ podman_container_ssh_host_group }}"
+    mode: "0644"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_ssh_public_key_stat_after_generation.stat.exists
 
 - name: "Reading generated container SSH public key"
   ansible.builtin.slurp:

@@ -1,0 +1,58 @@
+---
+- name: Converge
+  hosts: all
+  become: false
+  vars:
+    state: install
+    podman_skip_container_guard: true
+    podman_container_ssh_host_user_override: automation
+    podman_container_presets:
+      rhel9:
+        image: "docker.io/idarsi/rockylinux-init:10"
+    iac_blueprint:
+      podman:
+        configuration:
+          network:
+            network_backend: "netavark"
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "molecule-rhel9-experimental-host-user"
+              systemd: always
+              privileged: true
+              volume:
+                - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+            command: "/sbin/init"
+            bootstrap_packages:
+              - openssh-server
+            bootstrap_services:
+              - sshd
+            bootstrap_ssh_root_access: true
+  pre_tasks:
+    - name: "Ensuring Podman configuration directory exists"
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Forcing vfs storage driver for nested Podman tests"
+      ansible.builtin.copy:
+        dest: /etc/containers/storage.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [storage]
+          driver = "vfs"
+
+    - name: "Ensuring host-side automation test user exists"
+      ansible.builtin.user:
+        name: automation
+        home: /home/automation
+        create_home: true
+        shell: /bin/bash
+        state: present
+  roles:
+    - role: ansible-iac-role-podman
