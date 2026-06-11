@@ -401,7 +401,10 @@ coverage:
 - `molecule/lifecycle` validates `container_present`, `container_started`,
   `container_stopped`, and `container_absent`
 - `molecule/experimental` validates `bootstrap_packages`,
-  `bootstrap_services`, and `bootstrap_ssh_root_access`
+  `bootstrap_services`, and `bootstrap_ssh_root_access` through a published
+  SSH port
+- `molecule/experimental-ip` validates `bootstrap_ssh_root_access` through
+  direct container IP access without `publish`
 
 Run locally from the role directory:
 
@@ -415,6 +418,7 @@ Run a specific scenario:
 molecule test -s default
 molecule test -s lifecycle
 molecule test -s experimental
+molecule test -s experimental-ip
 ```
 
 Recommended use cases:
@@ -429,6 +433,8 @@ Recommended use cases:
 - Use `molecule test -s experimental` when touching experimental bootstrap
   features such as package installation inside the container, service enable
   and start operations, or generated root SSH access
+- Use `molecule test -s experimental-ip` when touching direct container IP
+  SSH access or `known_hosts` behavior without a published SSH port
 - Use `molecule test` when you want the broadest local regression check across
   all scenarios
 

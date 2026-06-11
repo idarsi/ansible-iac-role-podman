@@ -54,3 +54,5 @@ podman_container_presets:
     image: "registry.access.redhat.com/ubi9-init"
 
 podman_container_generated_ssh_key_dir: "/root/.ssh"
+podman_debug_bootstrap_ssh: false
+podman_debug_bootstrap_ssh_artifact_dir: "/tmp/ansible-iac-role-podman-debug"
