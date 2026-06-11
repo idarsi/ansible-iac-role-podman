@@ -1,0 +1,148 @@
+---
+- name: Verify
+  hosts: all
+  become: false
+  vars:
+    podman_experimental_host_user_name: "automation"
+    podman_experimental_host_user_group: "automation"
+    podman_experimental_host_user_home: "/home/automation"
+    podman_experimental_host_user_container_name: "molecule-rhel9-experimental-host-user"
+    podman_experimental_host_user_private_key_path: "/home/automation/.ssh/id_ed25519_podman_molecule-rhel9-experimental-host-user"
+    podman_experimental_host_user_public_key_path: "/home/automation/.ssh/id_ed25519_podman_molecule-rhel9-experimental-host-user.pub"
+    podman_experimental_host_user_known_hosts_path: "/home/automation/.ssh/known_hosts"
+  tasks:
+    - name: "Checking experimental host-user container status"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{ .State.Status }}" }}'
+        {{ podman_experimental_host_user_container_name }}
+      register: podman_experimental_host_user_container_status
+      changed_when: false
+
+    - name: "Detecting experimental host-user container address"
+      ansible.builtin.command: >-
+        podman inspect --format '{{ "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}" }}'
+        {{ podman_experimental_host_user_container_name }}
+      register: podman_experimental_host_user_container_ips
+      changed_when: false
+
+    - name: "Setting experimental host-user target"
+      ansible.builtin.set_fact:
+        podman_experimental_host_user_target: "{{ podman_experimental_host_user_container_ips.stdout.split() | first }}"
+
+    - name: "Checking openssh-server installation inside experimental host-user container"
+      ansible.builtin.command: >-
+        podman exec {{ podman_experimental_host_user_container_name }}
+        rpm -q openssh-server
+      register: podman_experimental_host_user_openssh_package
+      changed_when: false
+
+    - name: "Checking sshd service enabled state inside experimental host-user container"
+      ansible.builtin.command: >-
+        podman exec {{ podman_experimental_host_user_container_name }}
+        systemctl is-enabled sshd
+      register: podman_experimental_host_user_sshd_enabled
+      changed_when: false
+
+    - name: "Checking sshd service active state inside experimental host-user container"
+      ansible.builtin.command: >-
+        podman exec {{ podman_experimental_host_user_container_name }}
+        systemctl is-active sshd
+      register: podman_experimental_host_user_sshd_active
+      changed_when: false
+
+    - name: "Checking generated SSH private key on host"
+      ansible.builtin.stat:
+        path: "{{ podman_experimental_host_user_private_key_path }}"
+      register: podman_experimental_host_user_private_key_stat
+
+    - name: "Checking generated SSH public key on host"
+      ansible.builtin.stat:
+        path: "{{ podman_experimental_host_user_public_key_path }}"
+      register: podman_experimental_host_user_public_key_stat
+
+    - name: "Checking generated known_hosts file on host"
+      ansible.builtin.stat:
+        path: "{{ podman_experimental_host_user_known_hosts_path }}"
+      register: podman_experimental_host_user_known_hosts_stat
+
+    - name: "Reading generated SSH public key on host"
+      ansible.builtin.slurp:
+        path: "{{ podman_experimental_host_user_public_key_path }}"
+      register: podman_experimental_host_user_public_key
+      when: podman_experimental_host_user_public_key_stat.stat.exists
+
+    - name: "Reading container authorized_keys"
+      ansible.builtin.command: >-
+        podman exec {{ podman_experimental_host_user_container_name }}
+        sh -lc 'cat /root/.ssh/authorized_keys'
+      register: podman_experimental_host_user_authorized_keys
+      changed_when: false
+
+    - name: "Reading generated known_hosts file on host"
+      ansible.builtin.slurp:
+        path: "{{ podman_experimental_host_user_known_hosts_path }}"
+      register: podman_experimental_host_user_known_hosts
+      when: podman_experimental_host_user_known_hosts_stat.stat.exists
+
+    - name: "Checking experimental host-user host key entry from known_hosts"
+      ansible.builtin.command: >-
+        ssh-keygen -F {{ podman_experimental_host_user_target }}
+        -f {{ podman_experimental_host_user_known_hosts_path }}
+      register: podman_experimental_host_user_known_hosts_lookup
+      changed_when: false
+      when: podman_experimental_host_user_known_hosts_stat.stat.exists
+
+    - name: "Checking experimental host-user ED25519 host key entry from known_hosts"
+      ansible.builtin.shell: >-
+        ssh-keygen -F {{ podman_experimental_host_user_target }}
+        -f {{ podman_experimental_host_user_known_hosts_path }}
+        | grep -F 'ssh-ed25519'
+      register: podman_experimental_host_user_known_hosts_ed25519_lookup
+      changed_when: false
+      when: podman_experimental_host_user_known_hosts_stat.stat.exists
+
+    - name: "Verifying experimental host-user host key prerequisites"
+      ansible.builtin.assert:
+        that:
+          - podman_experimental_host_user_container_status.stdout == "running"
+          - (podman_experimental_host_user_target | string | trim) != ""
+          - podman_experimental_host_user_openssh_package.rc == 0
+          - podman_experimental_host_user_sshd_enabled.stdout in ["enabled", "enabled-runtime", "static"]
+          - podman_experimental_host_user_sshd_active.stdout == "active"
+          - podman_experimental_host_user_private_key_stat.stat.exists
+          - podman_experimental_host_user_public_key_stat.stat.exists
+          - podman_experimental_host_user_known_hosts_stat.stat.exists
+          - podman_experimental_host_user_private_key_stat.stat.pw_name == podman_experimental_host_user_name
+          - podman_experimental_host_user_private_key_stat.stat.gr_name == podman_experimental_host_user_group
+          - podman_experimental_host_user_public_key_stat.stat.pw_name == podman_experimental_host_user_name
+          - podman_experimental_host_user_public_key_stat.stat.gr_name == podman_experimental_host_user_group
+          - podman_experimental_host_user_known_hosts_stat.stat.pw_name == podman_experimental_host_user_name
+          - podman_experimental_host_user_known_hosts_stat.stat.gr_name == podman_experimental_host_user_group
+          - podman_experimental_host_user_private_key_stat.stat.mode == "0600"
+          - podman_experimental_host_user_public_key_stat.stat.mode == "0644"
+          - podman_experimental_host_user_known_hosts_stat.stat.mode == "0600"
+          - podman_experimental_host_user_known_hosts_lookup.rc == 0
+          - podman_experimental_host_user_known_hosts_ed25519_lookup.rc == 0
+          - (podman_experimental_host_user_public_key.content | b64decode | trim) in (podman_experimental_host_user_authorized_keys.stdout | default(''))
+          - podman_experimental_host_user_target in (podman_experimental_host_user_known_hosts.content | b64decode)
+        fail_msg: "Podman experimental host-user Molecule verification failed"
+
+    - name: "Verifying SSH login from host automation user to experimental host-user container root"
+      ansible.builtin.command: >-
+        ssh -i {{ podman_experimental_host_user_private_key_path }}
+        -o BatchMode=yes
+        -o StrictHostKeyChecking=yes
+        -o UserKnownHostsFile={{ podman_experimental_host_user_known_hosts_path }}
+        -o PreferredAuthentications=publickey
+        root@{{ podman_experimental_host_user_target }}
+        true
+      register: podman_experimental_host_user_ssh_login
+      changed_when: false
+      become: true
+      become_user: "{{ podman_experimental_host_user_name }}"
+
+    - name: "Verifying experimental host-user SSH login"
+      ansible.builtin.assert:
+        that:
+          - podman_experimental_host_user_ssh_login.rc == 0
+        fail_msg: "Podman experimental host-user SSH login verification failed"
