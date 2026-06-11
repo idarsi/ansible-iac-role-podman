@@ -1,0 +1,69 @@
+---
+- name: "Preparing bootstrap SSH debug data for known_hosts management"
+  ansible.builtin.set_fact:
+    podman_container_known_hosts_debug:
+      container_name: "{{ podman_container_effective.parameters.name }}"
+      known_hosts_path: "{{ podman_container_ssh_known_hosts_path }}"
+      publish: "{{ podman_container_effective.parameters.publish | default([]) }}"
+      detected_ips: "{{ podman_container_ssh_container_ips.stdout_lines | default([]) }}"
+      scan_targets: "{{ podman_container_ssh_scan_targets | default([]) }}"
+      host_public_key: "{{ podman_container_ssh_host_public_key.stdout | default('') | trim }}"
+      known_host_entries: "{{ podman_container_ssh_known_host_entries | default([]) }}"
+      existing_content_sha256: "{{ (podman_container_existing_known_hosts.content | default('') | b64decode) | hash('sha256') }}"
+      rendered_content_sha256: "{{ podman_container_rendered_known_hosts_content | hash('sha256') }}"
+      existing_content_lines: "{{ (podman_container_existing_known_hosts.content | default('') | b64decode).splitlines() }}"
+      rendered_content_lines: "{{ podman_container_rendered_known_hosts_content.splitlines() }}"
+      update_required: >-
+        {{
+          ((podman_container_existing_known_hosts.content | default('') | b64decode) ~ '\n')
+          !=
+          (podman_container_rendered_known_hosts_content ~ '\n')
+        }}
+
+- name: "Debugging known_hosts management summary"
+  ansible.builtin.debug:
+    msg:
+      container_name: "{{ podman_container_known_hosts_debug.container_name }}"
+      known_hosts_path: "{{ podman_container_known_hosts_debug.known_hosts_path }}"
+      scan_targets: "{{ podman_container_known_hosts_debug.scan_targets }}"
+      known_host_entry_count: "{{ (podman_container_known_hosts_debug.known_host_entries | default([])) | length }}"
+      existing_content_sha256: "{{ podman_container_known_hosts_debug.existing_content_sha256 }}"
+      rendered_content_sha256: "{{ podman_container_known_hosts_debug.rendered_content_sha256 }}"
+      update_required: "{{ podman_container_known_hosts_debug.update_required }}"
+
+- name: "Ensuring bootstrap SSH debug artifact directory exists"
+  ansible.builtin.file:
+    path: "{{ podman_debug_bootstrap_ssh_artifact_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0700"
+
+- name: "Writing bootstrap SSH debug artifact"
+  ansible.builtin.copy:
+    dest: >-
+      {{
+        podman_debug_bootstrap_ssh_artifact_dir
+        ~ '/'
+        ~ (
+          podman_container_effective.parameters.name
+          | regex_replace('[^A-Za-z0-9._-]', '_')
+        )
+        ~ '-known-hosts-debug.yml'
+      }}
+    content: "{{ podman_container_known_hosts_debug | to_nice_yaml(indent=2) }}"
+    owner: root
+    group: root
+    mode: "0600"
+
+- name: "Debugging known_hosts post-write status"
+  ansible.builtin.debug:
+    msg:
+      changed: "{{ podman_container_known_hosts_write_result.changed | default(false) }}"
+      final_content_sha256: "{{ (podman_container_known_hosts_after_update.content | default('') | b64decode) | hash('sha256') }}"
+      final_matches_rendered: >-
+        {{
+          ((podman_container_known_hosts_after_update.content | default('') | b64decode) | trim)
+          ==
+          (podman_container_rendered_known_hosts_content | trim)
+        }}
