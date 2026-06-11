@@ -198,6 +198,20 @@ By default the generated private key path is:
 /root/.ssh/id_ed25519_podman_<container-name>
 ```
 
+Example SSH commands from the host:
+
+```bash
+ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd -p 2222 root@127.0.0.1
+ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd root@10.108.0.100
+```
+
+Notes:
+
+- use `-i` to point SSH at the generated private key on the host
+- use `-p <port>` only when the container SSH port is published on the host
+- when connecting directly to the container IP, use the container IP without
+  `-p` unless you changed the SSH port inside the container
+
 Container presets
 -----------------
 
