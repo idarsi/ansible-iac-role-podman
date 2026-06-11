@@ -419,9 +419,6 @@ coverage:
   SSH port
 - `molecule/experimental-ip` validates `bootstrap_ssh_root_access` through
   direct container IP access without `publish`
-- `molecule/experimental-rhel9-preset` validates `bootstrap_ssh_root_access`
-  against the role's default `rhel9` preset image through direct container IP
-  access
 
 Run locally from the role directory:
 
@@ -436,7 +433,6 @@ molecule test -s default
 molecule test -s lifecycle
 molecule test -s experimental
 molecule test -s experimental-ip
-molecule test -s experimental-rhel9-preset
 ```
 
 Recommended use cases:
@@ -453,9 +449,6 @@ Recommended use cases:
   and start operations, or generated root SSH access
 - Use `molecule test -s experimental-ip` when touching direct container IP
   SSH access or `known_hosts` behavior without a published SSH port
-- Use `molecule test -s experimental-rhel9-preset` when validating the
-  default `rhel9` preset image behavior instead of the Rocky-based nested test
-  image override
 - Use `molecule test` when you want the broadest local regression check across
   all scenarios
 
