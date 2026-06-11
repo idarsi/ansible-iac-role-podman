@@ -198,6 +198,20 @@ By default the generated private key path is:
 /root/.ssh/id_ed25519_podman_<container-name>
 ```
 
+Example SSH commands from the host:
+
+```bash
+ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd -p 2222 root@127.0.0.1
+ssh -i /root/.ssh/id_ed25519_podman_rhel9-sshd root@10.108.0.100
+```
+
+Notes:
+
+- use `-i` to point SSH at the generated private key on the host
+- use `-p <port>` only when the container SSH port is published on the host
+- when connecting directly to the container IP, use the container IP without
+  `-p` unless you changed the SSH port inside the container
+
 Container presets
 -----------------
 
@@ -405,6 +419,9 @@ coverage:
   SSH port
 - `molecule/experimental-ip` validates `bootstrap_ssh_root_access` through
   direct container IP access without `publish`
+- `molecule/experimental-rhel9-preset` validates `bootstrap_ssh_root_access`
+  against the role's default `rhel9` preset image through direct container IP
+  access
 
 Run locally from the role directory:
 
@@ -419,6 +436,7 @@ molecule test -s default
 molecule test -s lifecycle
 molecule test -s experimental
 molecule test -s experimental-ip
+molecule test -s experimental-rhel9-preset
 ```
 
 Recommended use cases:
@@ -435,6 +453,9 @@ Recommended use cases:
   and start operations, or generated root SSH access
 - Use `molecule test -s experimental-ip` when touching direct container IP
   SSH access or `known_hosts` behavior without a published SSH port
+- Use `molecule test -s experimental-rhel9-preset` when validating the
+  default `rhel9` preset image behavior instead of the Rocky-based nested test
+  image override
 - Use `molecule test` when you want the broadest local regression check across
   all scenarios
 

@@ -1,0 +1,46 @@
+---
+- name: Converge
+  hosts: all
+  become: false
+  vars:
+    state: install
+    podman_skip_container_guard: true
+    iac_blueprint:
+      podman:
+        configuration:
+          network:
+            network_backend: "netavark"
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "molecule-rhel9-experimental-rhel9-preset"
+              systemd: always
+              privileged: true
+              volume:
+                - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+            command: "/sbin/init"
+            bootstrap_packages:
+              - openssh-server
+            bootstrap_services:
+              - sshd
+            bootstrap_ssh_root_access: true
+  pre_tasks:
+    - name: "Ensuring Podman configuration directory exists"
+      ansible.builtin.file:
+        path: /etc/containers
+        state: directory
+        owner: root
+        group: root
+        mode: "0755"
+
+    - name: "Forcing vfs storage driver for nested Podman tests"
+      ansible.builtin.copy:
+        dest: /etc/containers/storage.conf
+        owner: root
+        group: root
+        mode: "0644"
+        content: |
+          [storage]
+          driver = "vfs"
+  roles:
+    - role: ansible-iac-role-podman
