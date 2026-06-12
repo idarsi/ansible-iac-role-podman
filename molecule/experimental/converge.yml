@@ -28,6 +28,10 @@
             bootstrap_services:
               - sshd
             bootstrap_ssh_root_access: true
+            bootstrap_ssh_authorized_keys_contents:
+              - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeStaticAuthorizedKeyLine molecule-static@example"
+            bootstrap_ssh_authorized_keys_files:
+              - "{{ playbook_dir }}/files/controller_id_ed25519.pub"
   pre_tasks:
     - name: "Ensuring Podman configuration directory exists"
       ansible.builtin.file:

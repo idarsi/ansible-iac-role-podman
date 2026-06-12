@@ -134,6 +134,62 @@
     - podman_container_effective.bootstrap_services is defined
     - podman_container_effective.bootstrap_services | length > 0
 
+- name: "Normalizing experimental root SSH authorized key inputs"
+  ansible.builtin.set_fact:
+    podman_container_controller_ssh_authorized_keys_contents: >-
+      {{
+        podman_container_controller_ssh_authorized_keys_contents_raw
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+    podman_container_controller_ssh_authorized_keys_files: >-
+      {{
+        podman_container_controller_ssh_authorized_keys_files_raw
+        | map('string')
+        | map('trim')
+        | reject('equalto', '')
+        | list
+      }}
+    podman_container_manage_root_ssh_authorized_keys: >-
+      {{
+        (podman_container_effective.bootstrap_ssh_root_access | default(false))
+        or (podman_container_controller_ssh_authorized_keys_contents_raw | length > 0)
+        or (podman_container_controller_ssh_authorized_keys_files_raw | length > 0)
+      }}
+  vars:
+    podman_container_controller_ssh_authorized_keys_contents_raw: >-
+      {{
+        [podman_container_effective.bootstrap_ssh_authorized_keys_contents]
+        if (
+          podman_container_effective.bootstrap_ssh_authorized_keys_contents is defined
+          and podman_container_effective.bootstrap_ssh_authorized_keys_contents is string
+        )
+        else (
+          podman_container_effective.bootstrap_ssh_authorized_keys_contents
+          if (
+            podman_container_effective.bootstrap_ssh_authorized_keys_contents is defined
+          )
+          else []
+        )
+      }}
+    podman_container_controller_ssh_authorized_keys_files_raw: >-
+      {{
+        [podman_container_effective.bootstrap_ssh_authorized_keys_files]
+        if (
+          podman_container_effective.bootstrap_ssh_authorized_keys_files is defined
+          and podman_container_effective.bootstrap_ssh_authorized_keys_files is string
+        )
+        else (
+          podman_container_effective.bootstrap_ssh_authorized_keys_files
+          if (
+            podman_container_effective.bootstrap_ssh_authorized_keys_files is defined
+          )
+          else []
+        )
+      }}
+
 - name: "Preparing experimental root SSH access key paths"
   ansible.builtin.set_fact:
     podman_container_ssh_host_user: >-
@@ -575,182 +631,12 @@
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
-- name: "Checking whether generated SSH public key is already installed in container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "mkdir -p /root/.ssh &&
-    chmod 700 /root/.ssh &&
-    touch /root/.ssh/authorized_keys &&
-    chmod 600 /root/.ssh/authorized_keys &&
-    key_line='{{ podman_container_ssh_public_key_content.content | b64decode | trim }}' &&
-    if grep -qxF \"\$key_line\" /root/.ssh/authorized_keys 2>/dev/null; then
-      echo PRESENT;
-    else
-      echo MISSING;
-    fi"
-  register: podman_container_authorized_key_presence
-  changed_when: false
+- name: "Managing container root authorized_keys"
+  ansible.builtin.include_tasks: bootstrap_root_authorized_keys.yml
   when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - podman_container_manage_root_ssh_authorized_keys | bool
 
-- name: "Creating temporary authorized key file on host"
-  ansible.builtin.tempfile:
-    state: file
-    suffix: ".pub"
-  register: podman_container_authorized_key_tempfile
+- name: "Managing container root sshd login policy"
+  ansible.builtin.include_tasks: bootstrap_root_sshd_policy.yml
   when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_authorized_key_presence.stdout != "PRESENT"
-
-- name: "Writing generated SSH public key to temporary host file"
-  ansible.builtin.copy:
-    dest: "{{ podman_container_authorized_key_tempfile.path }}"
-    content: "{{ podman_container_ssh_public_key_content.content | b64decode }}"
-    owner: root
-    group: root
-    mode: "0600"
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_authorized_key_presence.stdout != "PRESENT"
-
-- name: "Ensuring container root SSH directory exists"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "mkdir -p /root/.ssh && chmod 700 /root/.ssh"
-  changed_when: false
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-
-- name: "Copying generated SSH public key into container"
-  ansible.builtin.command:
-    cmd: >-
-      podman cp {{ podman_container_authorized_key_tempfile.path }}
-      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-root-authorized-key.pub
-  changed_when: false
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_authorized_key_presence.stdout != "PRESENT"
-
-- name: "Installing generated SSH public key into container root authorized_keys"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "touch /root/.ssh/authorized_keys &&
-    chmod 600 /root/.ssh/authorized_keys &&
-    key_line=\$(cat /tmp/idarsi-root-authorized-key.pub) &&
-    if grep -qxF \"\$key_line\" /root/.ssh/authorized_keys 2>/dev/null; then
-      echo UNCHANGED;
-    else
-      printf '%s\n' \"\$key_line\" >> /root/.ssh/authorized_keys &&
-      echo CHANGED;
-    fi &&
-    rm -f /tmp/idarsi-root-authorized-key.pub"
-  register: podman_container_authorized_keys_result
-  changed_when: "'CHANGED' in (podman_container_authorized_keys_result.stdout | default(''))"
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_authorized_key_presence.stdout != "PRESENT"
-
-- name: "Removing temporary authorized key file from host"
-  ansible.builtin.file:
-    path: "{{ podman_container_authorized_key_tempfile.path }}"
-    state: absent
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_authorized_key_presence.stdout != "PRESENT"
-
-- name: "Preparing desired sshd root login policy content"
-  ansible.builtin.set_fact:
-    podman_container_sshd_root_login_policy_content: |
-      PermitRootLogin yes
-      PubkeyAuthentication yes
-      PasswordAuthentication no
-      KbdInteractiveAuthentication no
-      AuthorizedKeysFile .ssh/authorized_keys
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-
-- name: "Checking existing sshd root login policy inside container"
-  ansible.builtin.command: >-
-    podman exec {{ podman_container_effective.parameters.name }}
-    sh -lc 'cat /etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf'
-  register: podman_container_existing_sshd_policy
-  changed_when: false
-  failed_when: false
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-
-- name: "Checking whether sshd root login policy update is needed"
-  ansible.builtin.set_fact:
-    podman_container_sshd_policy_update_needed: >-
-      {{
-        podman_container_existing_sshd_policy.rc != 0
-        or
-        (
-          (podman_container_existing_sshd_policy.stdout | default('') | trim)
-          !=
-          (podman_container_sshd_root_login_policy_content | trim)
-        )
-      }}
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-
-- name: "Creating temporary sshd root login policy file on host"
-  ansible.builtin.tempfile:
-    state: file
-    suffix: ".conf"
-  register: podman_container_sshd_policy_tempfile
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Writing sshd root login policy to temporary host file"
-  ansible.builtin.copy:
-    dest: "{{ podman_container_sshd_policy_tempfile.path }}"
-    content: "{{ podman_container_sshd_root_login_policy_content }}"
-    owner: root
-    group: root
-    mode: "0600"
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Copying sshd root login policy into container"
-  ansible.builtin.command:
-    cmd: >-
-      podman cp {{ podman_container_sshd_policy_tempfile.path }}
-      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-sshd-root-login.conf
-  changed_when: false
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Installing sshd root login policy inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "mkdir -p /etc/ssh/sshd_config.d &&
-    target_file=/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf &&
-    install -m 0644 /tmp/idarsi-sshd-root-login.conf \"\$target_file\" &&
-    rm -f /tmp/idarsi-sshd-root-login.conf &&
-    echo CHANGED"
-  register: podman_container_sshd_policy_result
-  changed_when: "'CHANGED' in (podman_container_sshd_policy_result.stdout | default(''))"
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Restarting sshd after root login policy change"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "systemctl restart sshd"
-  changed_when: true
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Removing temporary sshd root login policy file from host"
-  ansible.builtin.file:
-    path: "{{ podman_container_sshd_policy_tempfile.path }}"
-    state: absent
-  when:
-    - podman_container_effective.bootstrap_ssh_root_access | default(false)
-    - podman_container_sshd_policy_update_needed | bool
+    - podman_container_manage_root_ssh_authorized_keys | bool

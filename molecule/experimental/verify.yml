@@ -7,6 +7,8 @@
     podman_experimental_private_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental"
     podman_experimental_public_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental.pub"
     podman_experimental_known_hosts_path: "/root/.ssh/known_hosts"
+    podman_experimental_static_authorized_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIMoleculeStaticAuthorizedKeyLine molecule-static@example"
+    podman_experimental_controller_public_key_path: "{{ playbook_dir }}/files/controller_id_ed25519.pub"
   tasks:
     - name: "Checking experimental container status"
       ansible.builtin.command: >-
@@ -52,6 +54,17 @@
       register: podman_experimental_public_key
       when: podman_experimental_public_key_stat.stat.exists
 
+    - name: "Reading controller public key fixture"
+      ansible.builtin.set_fact:
+        podman_experimental_controller_public_key: >-
+          {{
+            lookup(
+              'ansible.builtin.file',
+              podman_experimental_controller_public_key_path,
+              rstrip=false
+            ) | string | trim
+          }}
+
     - name: "Reading container authorized_keys"
       ansible.builtin.command: >-
         podman exec {{ podman_experimental_container_name }}
@@ -94,6 +107,8 @@
           - podman_experimental_public_key_stat.stat.exists
           - podman_experimental_known_hosts_stat.stat.exists
           - (podman_experimental_public_key.content | b64decode | trim) in (podman_experimental_authorized_keys.stdout | default(''))
+          - podman_experimental_static_authorized_key in (podman_experimental_authorized_keys.stdout | default(''))
+          - podman_experimental_controller_public_key in (podman_experimental_authorized_keys.stdout | default(''))
           - "'[127.0.0.1]:2222' in (podman_experimental_known_hosts.content | b64decode)"
           - podman_experimental_ssh_login.rc == 0
         fail_msg: "Podman experimental Molecule verification failed"

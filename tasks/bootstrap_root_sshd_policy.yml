@@ -1,0 +1,84 @@
+- name: "Preparing desired sshd root login policy content"
+  ansible.builtin.set_fact:
+    podman_container_sshd_root_login_policy_content: |
+      PermitRootLogin yes
+      PubkeyAuthentication yes
+      PasswordAuthentication no
+      KbdInteractiveAuthentication no
+      AuthorizedKeysFile .ssh/authorized_keys
+
+- name: "Checking existing sshd root login policy inside container"
+  ansible.builtin.command: >-
+    podman exec {{ podman_container_effective.parameters.name }}
+    sh -lc 'cat /etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf'
+  register: podman_container_existing_sshd_policy
+  changed_when: false
+  failed_when: false
+
+- name: "Checking whether sshd root login policy update is needed"
+  ansible.builtin.set_fact:
+    podman_container_sshd_policy_update_needed: >-
+      {{
+        podman_container_existing_sshd_policy.rc != 0
+        or
+        (
+          (podman_container_existing_sshd_policy.stdout | default('') | trim)
+          !=
+          (podman_container_sshd_root_login_policy_content | trim)
+        )
+      }}
+
+- name: "Creating temporary sshd root login policy file on host"
+  ansible.builtin.tempfile:
+    state: file
+    suffix: ".conf"
+  register: podman_container_sshd_policy_tempfile
+  when:
+    - podman_container_sshd_policy_update_needed | bool
+
+- name: "Writing sshd root login policy to temporary host file"
+  ansible.builtin.copy:
+    dest: "{{ podman_container_sshd_policy_tempfile.path }}"
+    content: "{{ podman_container_sshd_root_login_policy_content }}"
+    owner: root
+    group: root
+    mode: "0600"
+  when:
+    - podman_container_sshd_policy_update_needed | bool
+
+- name: "Copying sshd root login policy into container"
+  ansible.builtin.command:
+    cmd: >-
+      podman cp {{ podman_container_sshd_policy_tempfile.path }}
+      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-sshd-root-login.conf
+  changed_when: false
+  when:
+    - podman_container_sshd_policy_update_needed | bool
+
+- name: "Installing sshd root login policy inside container"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "mkdir -p /etc/ssh/sshd_config.d &&
+    target_file=/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf &&
+    install -m 0644 /tmp/idarsi-sshd-root-login.conf \"\$target_file\" &&
+    rm -f /tmp/idarsi-sshd-root-login.conf &&
+    echo CHANGED"
+  register: podman_container_sshd_policy_result
+  changed_when: "'CHANGED' in (podman_container_sshd_policy_result.stdout | default(''))"
+  when:
+    - podman_container_sshd_policy_update_needed | bool
+
+- name: "Restarting sshd after root login policy change"
+  ansible.builtin.shell: >
+    podman exec {{ podman_container_effective.parameters.name }} sh -lc
+    "systemctl restart sshd"
+  changed_when: true
+  when:
+    - podman_container_sshd_policy_update_needed | bool
+
+- name: "Removing temporary sshd root login policy file from host"
+  ansible.builtin.file:
+    path: "{{ podman_container_sshd_policy_tempfile.path }}"
+    state: absent
+  when:
+    - podman_container_sshd_policy_update_needed | bool
