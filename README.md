@@ -152,15 +152,21 @@ iac_blueprint:
         bootstrap_services:
           - sshd
         bootstrap_ssh_root_access: true
+        bootstrap_ssh_authorized_keys_files:
+          - "{{ playbook_dir }}/files/id_ed25519_controller.pub"
 ```
 
 Notes:
 
 - `bootstrap_packages` and `bootstrap_services` are still experimental
 - `bootstrap_ssh_root_access` is also experimental
+- `bootstrap_ssh_authorized_keys_contents` and
+  `bootstrap_ssh_authorized_keys_files` are also experimental
 - `bootstrap_services` assumes that `systemctl` is actually usable inside the image
 - generated private keys are stored under the host SSH login user's `.ssh/`
   directory by default
+- explicit controller-side public keys are read on the Ansible controller and
+  appended to container root `authorized_keys`
 - published SSH endpoints such as `"2222:22"` are added to the host SSH login
   user's `known_hosts` as entries like `[127.0.0.1]:2222`
 - if the SSH login user is `root`, the default paths still resolve under
@@ -220,6 +226,46 @@ Notes:
 - use `-p <port>` only when the container SSH port is published on the host
 - when connecting directly to the container IP, use the container IP without
   `-p` unless you changed the SSH port inside the container
+
+Experimental Controller-Side Authorized Keys
+--------------------------------------------
+
+Container definitions may include optional experimental controller-side public
+keys that are installed into container root's `authorized_keys` without
+generating a new host key pair.
+
+Supported input forms:
+
+- `bootstrap_ssh_authorized_keys_contents`: list of literal public key lines
+- `bootstrap_ssh_authorized_keys_files`: list of controller-local file paths
+
+Example:
+
+```yaml
+iac_blueprint:
+  podman:
+    containers:
+      - preset: rhel9
+        parameters:
+          name: "rhel9-ssh"
+          publish: "2222:22"
+        bootstrap_services:
+          - sshd
+        bootstrap_ssh_authorized_keys_contents:
+          - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEXAMPLEcontrollerkey operator@example"
+        bootstrap_ssh_authorized_keys_files:
+          - "{{ playbook_dir }}/files/id_ed25519_controller.pub"
+```
+
+Notes:
+
+- file-path lookups happen on the Ansible controller, not on the Podman host
+- the role appends only missing keys and keeps existing non-managed
+  `authorized_keys` entries intact
+- when controller-side keys are configured, the role also writes the same sshd
+  root public key login policy as `bootstrap_ssh_root_access`
+- use this path when you already manage the private key on the Ansible
+  controller and do not want the role to generate an additional host-side key
 
 Container presets
 -----------------
@@ -342,6 +388,11 @@ Supported container keys:
 - `bootstrap_services`: optional experimental services enabled and started
   inside the running container
 - `bootstrap_ssh_root_access`: optional experimental root SSH key bootstrap
+- `bootstrap_ssh_authorized_keys_contents`: optional experimental literal
+  public keys copied from inventory/playbook data into container root
+  `authorized_keys`
+- `bootstrap_ssh_authorized_keys_files`: optional experimental controller-local
+  public key file paths copied into container root `authorized_keys`
 - `bootstrap_ssh_private_key_path`: optional override for the generated host
   private key path
 - `bootstrap_ssh_known_hosts_path`: optional override for the host-side

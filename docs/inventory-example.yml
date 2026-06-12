@@ -54,6 +54,8 @@ servers:
             bootstrap_services:
               - sshd
             bootstrap_ssh_root_access: true
+            bootstrap_ssh_authorized_keys_files:
+              - "/opt/idarsi/controller-keys/id_ed25519_test_systemd.pub"
             bootstrap_ssh_private_key_path: "/home/automation/.ssh/id_ed25519_test_systemd"
             bootstrap_ssh_known_hosts_path: "/home/automation/.ssh/known_hosts"
           - image: "docker.io/metabase/metabase"
