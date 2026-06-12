@@ -132,7 +132,6 @@ The following example shows a more complete container that:
 - starts `sshd` through `systemctl`
 - generates an ed25519 key for the host SSH login user and adds it to container root
   `authorized_keys`
-- adds explicit controller-side public keys to container root `authorized_keys`
 - adds the container SSH host key to the host SSH login user's `known_hosts`
 - installs an sshd drop-in that explicitly allows root public key login
 
