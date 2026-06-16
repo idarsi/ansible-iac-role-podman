@@ -1,0 +1,16 @@
+---
+servers:
+  hosts:
+    host.example.org:
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/metabase/metabase"
+            parameters:
+              name: "metabase"
+              hostname: "metabase"
+              ip: 10.168.0.101
+              publish: "3000:3000"
+            environment:
+              MB_JETTY_PORT: "3000"

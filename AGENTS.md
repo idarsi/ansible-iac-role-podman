@@ -26,11 +26,13 @@ Podman container lifecycle states.
 
 ## Documentation Sync
 
-- Keep `README.md`, `docs/inventory-example.yml`, and
-  `docs/playbook-example.yml` consistent with each other.
-- When inventory keys or supported patterns change, update all three in the
-  same change.
-- Keep examples compact but representative of real supported usage.
+- Keep `README.md`, the use case examples under `docs/`, and the reference
+  documents under `docs/` consistent with each other.
+- When inventory keys or supported patterns change, update the matching use
+  case examples, `docs/inventory-structure.md`, and `docs/playbook-states.yml`
+  in the same change.
+- Keep examples compact, use case driven, and representative of real
+  supported usage.
 
 ## Inventory Compatibility
 

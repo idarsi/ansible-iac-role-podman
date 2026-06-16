@@ -1,0 +1,14 @@
+---
+servers:
+  hosts:
+    host.example.org:
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "rhel9-init"
+              hostname: "rhel9-init"
+              publish: "8080:80"
+            command: "sleep infinity"

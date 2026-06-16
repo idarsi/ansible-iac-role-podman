@@ -1,0 +1,12 @@
+---
+servers:
+  hosts:
+    host.example.org:
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "minimal"
+            command: "sleep infinity"

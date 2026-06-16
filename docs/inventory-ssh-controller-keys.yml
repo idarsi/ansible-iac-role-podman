@@ -1,0 +1,24 @@
+---
+servers:
+  hosts:
+    host.example.org:
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "rhel9-ssh"
+              publish: "2222:22"
+              systemd: always
+              privileged: true
+              volume:
+                - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+            bootstrap_packages:
+              - openssh-server
+            bootstrap_services:
+              - sshd
+            bootstrap_ssh_authorized_keys_contents:
+              - "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBEXAMPLEcontrollerkey operator@example"
+            bootstrap_ssh_authorized_keys_files:
+              - "{{ playbook_dir }}/files/id_ed25519_controller.pub"
