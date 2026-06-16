@@ -1,0 +1,21 @@
+---
+servers:
+  hosts:
+    host.example.org:
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "rhel9-sshd"
+              publish: "2222:22"
+              systemd: always
+              privileged: true
+              volume:
+                - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+            bootstrap_packages:
+              - openssh-server
+            bootstrap_services:
+              - sshd
+            bootstrap_ssh_root_access: true

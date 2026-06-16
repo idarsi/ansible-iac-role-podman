@@ -1,0 +1,65 @@
+---
+# Example flow:
+# 1. The Ansible controller connects to the Podman host with a password.
+# 2. The Podman role creates a managed RHEL 9 container and installs sshd and python3.
+# 3. The controller connects to the container as a separate Ansible host through
+#    the Podman host SSH proxy, using a controller-managed private key.
+#
+# Practical note:
+# - This example uses sshpass in ProxyCommand because the jump host is
+#   password-authenticated.
+# - For long-term use, controller-to-host SSH keys are a cleaner approach.
+
+podman_hosts:
+  hosts:
+    podman-host-1.example.org:
+      ansible_user: automation
+      ansible_password: "{{ vault_podman_host_password }}"
+  vars:
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              name: "pg17-main"
+              hostname: "pg17-main"
+              ip: 10.168.0.110
+              systemd: always
+              privileged: true
+              volume:
+                - "/sys/fs/cgroup:/sys/fs/cgroup:rw"
+            bootstrap_packages:
+              - openssh-server
+              - python3
+            bootstrap_services:
+              - sshd
+            bootstrap_ssh_authorized_keys_files:
+              - "{{ playbook_dir }}/files/id_ed25519_controller.pub"
+
+managed_containers:
+  hosts:
+    pg17-main:
+      ansible_host: 10.168.0.110
+      ansible_user: root
+      ansible_ssh_private_key_file: "{{ playbook_dir }}/files/id_ed25519_controller"
+      ansible_ssh_common_args: >-
+        -o ProxyCommand="sshpass -f {{ playbook_dir }}/files/podman-host.password
+        ssh -W %h:%p
+        -o StrictHostKeyChecking=no
+        -o UserKnownHostsFile=/dev/null
+        automation@podman-host-1.example.org"
+  vars:
+    iac_blueprint:
+      postgresql:
+        - version: 17
+          instances:
+            - name: main
+              roles:
+                - name: app
+                  password: changeme
+              databases:
+                - name: appdb
+                  owner: app
+                  access:
+                    - name: app
+                      address: 10.168.0.0/24

@@ -1,0 +1,14 @@
+---
+- name: Create a managed RHEL 9 Podman container on the target host
+  hosts: podman_hosts
+  become: true
+  roles:
+    - role: ansible-iac-role-podman
+      state: install
+
+- name: Install PostgreSQL inside the managed container over SSH proxy
+  hosts: managed_containers
+  become: true
+  roles:
+    - role: ansible-iac-role-postgresql
+      state: install

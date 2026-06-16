@@ -13,7 +13,7 @@
     - role: ansible-iac-role-podman
       state: present
 
-- name: Create configured containers without starting from full install flow
+- name: Create configured containers without starting them
   hosts: servers
   become: true
   roles:
