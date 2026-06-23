@@ -12,6 +12,9 @@ Overview
 This role manages Podman host configuration, host-side support resources, and
 Podman container lifecycle states.
 
+The `present` and `install` states also ensure common Podman network helper
+packages are installed on the host, including `slirp4netns` and `passt`.
+
 The role uses only `ansible.builtin.*` modules and the `podman` CLI.
 
 Supported states

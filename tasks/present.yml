@@ -21,6 +21,14 @@
   vars:
     iac_package: "podman"
 
+- name: "Ensuring Podman network helper packages are installed"
+  ansible.builtin.include_tasks: package_present.yml
+  loop:
+    - "slirp4netns"
+    - "passt"
+  loop_control:
+    loop_var: iac_package
+
 ###############################################################################
 # ENSURING DEFAULT CONFIGURATION
 ###############################################################################
