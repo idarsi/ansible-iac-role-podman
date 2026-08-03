@@ -29,11 +29,33 @@
         path: /tmp/podman-molecule/example.txt
       register: podman_file_stat
 
+    - name: "Checking controller source file copy"
+      ansible.builtin.stat:
+        path: /tmp/podman-molecule/from-controller.txt
+      register: podman_file_from_controller_stat
+
+    - name: "Checking remote source file copy"
+      ansible.builtin.stat:
+        path: /tmp/podman-molecule/from-remote.txt
+      register: podman_file_from_remote_stat
+
     - name: "Reading managed file"
       ansible.builtin.slurp:
         path: /tmp/podman-molecule/example.txt
       register: podman_file
       when: podman_file_stat.stat.exists
+
+    - name: "Reading controller source file copy"
+      ansible.builtin.slurp:
+        path: /tmp/podman-molecule/from-controller.txt
+      register: podman_file_from_controller
+      when: podman_file_from_controller_stat.stat.exists
+
+    - name: "Reading remote source file copy"
+      ansible.builtin.slurp:
+        path: /tmp/podman-molecule/from-remote.txt
+      register: podman_file_from_remote
+      when: podman_file_from_remote_stat.stat.exists
 
     - name: "Checking managed cron file"
       ansible.builtin.stat:
@@ -62,6 +84,10 @@
           - podman_directory_stat.stat.isdir
           - podman_file_stat.stat.exists
           - "(podman_file.content | b64decode) == 'molecule\n'"
+          - podman_file_from_controller_stat.stat.exists
+          - "(podman_file_from_controller.content | b64decode) == 'controller source\n'"
+          - podman_file_from_remote_stat.stat.exists
+          - "(podman_file_from_remote.content | b64decode) == 'remote source\n'"
           - podman_cron_stat.stat.exists
           - "'/bin/true' in (podman_cron.content | b64decode)"
           - podman_container_status.stdout == "running"

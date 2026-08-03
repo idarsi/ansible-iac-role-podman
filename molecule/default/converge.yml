@@ -24,6 +24,17 @@
             owner: root
             group: root
             mode: "0640"
+          - path: /tmp/podman-molecule/from-controller.txt
+            src: "{{ playbook_dir }}/files/controller-source.txt"
+            owner: root
+            group: root
+            mode: "0644"
+          - path: /tmp/podman-molecule/from-remote.txt
+            src: /tmp/podman-molecule-remote-source.txt
+            remote_src: true
+            owner: root
+            group: root
+            mode: "0600"
         cron:
           - name: podman_molecule_heartbeat
             user: root
@@ -54,5 +65,13 @@
         content: |
           [storage]
           driver = "vfs"
+
+    - name: "Creating remote source file for remote_src test"
+      ansible.builtin.copy:
+        dest: /tmp/podman-molecule-remote-source.txt
+        owner: root
+        group: root
+        mode: "0600"
+        content: "remote source\n"
   roles:
     - role: ansible-iac-role-podman
