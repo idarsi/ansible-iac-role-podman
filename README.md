@@ -31,6 +31,24 @@ State               | Purpose
 `container_started` | Start configured containers
 `container_stopped` | Stop configured containers
 
+Repository checkout
+===================
+
+This role includes the shared task library as a Git submodule under
+`tasks/shared`.
+
+Clone the repository with submodules:
+
+```bash
+git clone --recurse-submodules https://github.com/idarsi/ansible-iac-role-podman.git
+```
+
+If you already cloned the repository without submodules, initialize them with:
+
+```bash
+git submodule update --init --recursive
+```
+
 Quick start
 ===========
 
