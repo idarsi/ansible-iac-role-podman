@@ -32,9 +32,15 @@
   vars:
     iac_cron: "{{ iac_blueprint.podman.cron | default([]) }}"
 
+- name: "Ensuring bind mount configuration is absent"
+  ansible.builtin.include_tasks: bind_absent.yml
+  when: (iac_blueprint.podman.binds | default([])) | length > 0
+  vars:
+    iac_fs_binds: "{{ iac_blueprint.podman.binds | default([]) }}"
+
 - name: "Ensuring filesystem configuration is absent"
   ansible.builtin.include_tasks: fs_absent.yml
-  when: iac_blueprint.podman.directories is defined
+  when: (iac_blueprint.podman.directories | default([])) | length > 0 or (iac_blueprint.podman.files | default([])) | length > 0
   vars:
     iac_fs_directories: "{{ iac_blueprint.podman.directories | default([]) }}"
     iac_fs_files: "{{ iac_blueprint.podman.files | default([]) }}"
