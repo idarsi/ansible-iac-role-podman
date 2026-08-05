@@ -116,8 +116,19 @@ Supported top-level keys:
 - `configuration`
 - `directories`
 - `files`
+- `binds`
 - `cron`
 - `containers`
+
+Shared filesystem helpers
+=========================
+
+This role supports `directories:`, `files:`, and `binds:` through the shared
+task library under `tasks/shared`.
+
+For the exact `binds:` record structure and examples, see:
+
+- `tasks/shared/README.md`
 
 Supported container keys:
 
