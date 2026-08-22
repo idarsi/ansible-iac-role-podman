@@ -9,27 +9,39 @@ ANSIBLE-IAC-ROLE-PODMAN
 Overview
 ========
 
-This role manages Podman host configuration, host-side support resources, and
-Podman container lifecycle states.
+This Ansible role provides a declarative way to deploy and manage Podman hosts,
+host-side support resources, and Podman containers.
+
+Its development goal is to make repeatable Podman host and container
+deployments possible with as little manual work as possible. The role uses the
+`iac_blueprint` model to keep the desired state in one structured inventory
+while Ansible handles the host-specific implementation.
+
+The role manages Podman installation and configuration, shared filesystem
+resources, cron entries, container creation and lifecycle, and optional
+container bootstrap operations such as package installation, service startup,
+and SSH root access.
 
 The `present` and `install` states also ensure common Podman network helper
-packages are installed on the host, including `slirp4netns` and `passt`.
+packages are installed on the host, including `slirp4netns` and `passt`. The
+role uses only `ansible.builtin.*` modules and the `podman` CLI.
 
-The role uses only `ansible.builtin.*` modules and the `podman` CLI.
+These operations are supported:
 
-Supported states
-================
+Operation                              | State
+---------------------------------------|--------------------
+Installing and configuring all         | install
+Uninstalling all                        | uninstall
+Ensuring Podman and host resources     | present
+Removing Podman and host resources     | absent
+Creating configured containers         | container_present
+Removing configured containers         | container_absent
+Starting configured containers         | container_started
+Stopping configured containers         | container_stopped
 
-State               | Purpose
---------------------|--------------------------------------------------------
-`install`           | Install Podman and create all configured resources
-`uninstall`         | Remove Podman and all resources managed by the role
-`present`           | Ensure Podman package and host-side configuration exist
-`absent`            | Remove Podman package and host-side configuration
-`container_present` | Create configured containers without starting them
-`container_absent`  | Remove configured containers
-`container_started` | Start configured containers
-`container_stopped` | Stop configured containers
+The role supports container presets and optional bootstrap configuration for
+systemd-based containers, including SSH package and service setup and
+controller-provided authorized keys.
 
 Repository checkout
 ===================
@@ -105,6 +117,8 @@ Reference and operations:
 - [docs/playbook-states.yml](docs/playbook-states.yml)
 - [docs/playbook-proxy-ssh-postgresql.yml](docs/playbook-proxy-ssh-postgresql.yml)
 - [docs/experimental-features.md](docs/experimental-features.md)
+- [TESTING.md](TESTING.md)
+- [CONTRIBUTING.md](CONTRIBUTING.md)
 
 Inventory model
 ===============
