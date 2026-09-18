@@ -35,7 +35,7 @@ iac_blueprint:
       - image: "docker.io/library/alpine:latest"
         parameters:
           name: "example-container"
-        command: "sleep infinity"
+        command: ["sleep", "infinity"]
 ```
 
 Supported keys under `iac_blueprint.podman`:
@@ -67,7 +67,7 @@ iac_blueprint:
         environment:
           APP_ENV: production
           APP_PORT: "8080"
-        command: "sleep infinity"
+        command: ["sleep", "infinity"]
         bootstrap_packages:
           - openssh-server
         bootstrap_services:

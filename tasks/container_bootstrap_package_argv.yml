@@ -1,0 +1,15 @@
+---
+- name: "Building experimental bootstrap package argv"
+  ansible.builtin.set_fact:
+    podman_bootstrap_package_argv: >-
+      {{ ['podman', 'exec', podman_container_effective.parameters.name,
+          podman_container_package_manager.stdout | trim, 'install', '-y']
+         + (podman_container_effective.bootstrap_packages | map('string') | list) }}
+
+- name: "Checking bootstrap package argv type"
+  ansible.builtin.assert:
+    that:
+      - podman_bootstrap_package_argv is sequence
+      - podman_bootstrap_package_argv is not string
+      - podman_bootstrap_package_argv | map('string') | list | length == podman_bootstrap_package_argv | length
+    fail_msg: "Bootstrap package argv must be a list of scalar arguments"

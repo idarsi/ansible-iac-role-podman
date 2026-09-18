@@ -45,8 +45,8 @@ managed_containers:
       ansible_ssh_common_args: >-
         -o ProxyCommand="sshpass -f {{ playbook_dir }}/files/podman-host.password
         ssh -W %h:%p
-        -o StrictHostKeyChecking=no
-        -o UserKnownHostsFile=/dev/null
+        -o StrictHostKeyChecking=yes
+        -o UserKnownHostsFile=/home/automation/.ssh/known_hosts
         automation@podman-host-1.example.org"
   vars:
     iac_blueprint:

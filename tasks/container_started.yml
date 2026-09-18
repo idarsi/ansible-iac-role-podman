@@ -34,6 +34,7 @@
       - podman_container_effective.parameters is defined
       - podman_container_effective.parameters.name is defined
       - (podman_container_effective.parameters.name | string | trim) != ""
+      - podman_container_effective.parameters.name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
     fail_msg: "Podman container must define parameters.name directly or through preset data"
 
 ###############################################################################
@@ -41,24 +42,30 @@
 ###############################################################################
 
 - name: "Checking container status"
-  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_effective.parameters.name }}
+  ansible.builtin.command:
+    argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "{{ podman_container_effective.parameters.name }}"]
   register: container_active
   changed_when: false
   failed_when: false
 
 - name: "Ensuring container is started"
-  ansible.builtin.shell: >
-    podman start {{ podman_container_effective.parameters.name }}
+  ansible.builtin.command:
+    argv: ["podman", "start", "{{ podman_container_effective.parameters.name }}"]
   changed_when: true
   when: container_active.stdout != "running"
 
 - name: "Detecting package manager inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "if command -v dnf >/dev/null 2>&1; then echo dnf;
-    elif command -v microdnf >/dev/null 2>&1; then echo microdnf;
-    elif command -v yum >/dev/null 2>&1; then echo yum;
-    else exit 1; fi"
+  ansible.builtin.command:
+    argv:
+      - "podman"
+      - "exec"
+      - "{{ podman_container_effective.parameters.name }}"
+      - "sh"
+      - "-lc"
+      - >-
+        if command -v dnf >/dev/null 2>&1; then echo dnf; elif command -v
+        microdnf >/dev/null 2>&1; then echo microdnf; elif command -v yum
+        >/dev/null 2>&1; then echo yum; else exit 1; fi
   register: podman_container_package_manager
   changed_when: false
   when:
@@ -78,13 +85,15 @@
     - podman_container_effective.bootstrap_packages is defined
     - podman_container_effective.bootstrap_packages | length > 0
 
+- name: "Building safe bootstrap package argv"
+  ansible.builtin.include_tasks: container_bootstrap_package_argv.yml
+  when:
+    - podman_container_effective.bootstrap_packages is defined
+    - podman_container_effective.bootstrap_packages | length > 0
+
 - name: "Installing experimental bootstrap packages inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "{{ podman_container_package_manager.stdout | trim }} install -y
-    {% for package_name in podman_container_effective.bootstrap_packages %}
-    {{ package_name }}
-    {% endfor %}"
+  ansible.builtin.command:
+    argv: "{{ podman_bootstrap_package_argv }}"
   register: podman_bootstrap_install_result
   changed_when: >-
     (
@@ -98,9 +107,14 @@
     - podman_container_effective.bootstrap_packages | length > 0
 
 - name: "Checking systemctl support inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1 || systemctl list-unit-files >/dev/null 2>&1"
+  ansible.builtin.command:
+    argv:
+      - "podman"
+      - "exec"
+      - "{{ podman_container_effective.parameters.name }}"
+      - "sh"
+      - "-lc"
+      - "command -v systemctl >/dev/null 2>&1 && systemctl is-system-running >/dev/null 2>&1 || systemctl list-unit-files >/dev/null 2>&1"
   register: podman_container_systemctl_support
   changed_when: false
   failed_when: false
@@ -120,9 +134,8 @@
     - podman_container_effective.bootstrap_services | length > 0
 
 - name: "Enabling experimental bootstrap services inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "systemctl enable --now {{ item }}"
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "systemctl", "enable", "--now", "{{ item }}"]
   loop: "{{ podman_container_effective.bootstrap_services }}"
   register: podman_bootstrap_services_result
   changed_when: >-
@@ -381,6 +394,22 @@
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
+- name: "Validating generated SSH artifact paths"
+  ansible.builtin.assert:
+    that:
+      - podman_container_ssh_private_key_path is match('^/')
+      - podman_container_ssh_public_key_path is match('^/')
+      - podman_container_ssh_known_hosts_path is match('^/')
+      - "'..' not in podman_container_ssh_private_key_path.split('/')"
+      - "'..' not in podman_container_ssh_public_key_path.split('/')"
+      - "'..' not in podman_container_ssh_known_hosts_path.split('/')"
+      - podman_container_ssh_private_key_path is not search('\s')
+      - podman_container_ssh_public_key_path is not search('\s')
+      - podman_container_ssh_known_hosts_path is not search('\s')
+    fail_msg: "SSH artifact paths must be absolute, whitespace-free, and must not contain '..'"
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+
 - name: "Ensuring host SSH directory exists for generated container keys"
   ansible.builtin.file:
     path: "{{ podman_container_ssh_private_key_path | dirname }}"
@@ -399,10 +428,13 @@
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
 - name: "Detecting container IP address for SSH access"
-  ansible.builtin.command: >-
-    podman inspect --format
-    '{{ "{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}" }}'
-    {{ podman_container_effective.parameters.name }}
+  ansible.builtin.command:
+    argv:
+      - "podman"
+      - "inspect"
+      - "--format"
+      - "{{ '{{range .NetworkSettings.Networks}}{{.IPAddress}} {{end}}' }}"
+      - "{{ podman_container_effective.parameters.name }}"
   register: podman_container_ssh_container_ips
   changed_when: false
   retries: 10
@@ -529,9 +561,8 @@
     - (podman_container_ssh_scan_targets | default([])) | length > 0
 
 - name: "Reading container SSH ED25519 host public key"
-  ansible.builtin.command: >-
-    podman exec {{ podman_container_effective.parameters.name }}
-    sh -lc 'cat /etc/ssh/ssh_host_ed25519_key.pub'
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "cat", "/etc/ssh/ssh_host_ed25519_key.pub"]
   register: podman_container_ssh_host_public_key
   changed_when: false
   when:
@@ -587,10 +618,17 @@
 - name: "Rendering managed root known_hosts content for container SSH host keys"
   ansible.builtin.set_fact:
     podman_container_rendered_known_hosts_content: |-
-      {%- set marker_begin = '# BEGIN ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS' -%}
-      {%- set marker_end = '# END ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS' -%}
+      {%- set marker_id = podman_container_effective.parameters.name | regex_replace('[^A-Za-z0-9._-]', '_') -%}
+      {%- set marker_begin = '# BEGIN ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS ' ~ marker_id -%}
+      {%- set marker_end = '# END ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS ' ~ marker_id -%}
       {%- set existing_content = (podman_container_existing_known_hosts.content | default('') | b64decode) -%}
-      {%- set stripped_content = existing_content | regex_replace('(?ms)^# BEGIN ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS\\n.*?^# END ANSIBLE-IAC-ROLE-PODMAN SSH HOST KEYS\\n?', '') -%}
+      {%- set marker_pattern = (
+        '(?ms)^' ~ (marker_begin | regex_escape) ~ '\\n.*?^'
+        ~ (marker_end | regex_escape) ~ '\\n?'
+      ) -%}
+      {%- set stripped_content = existing_content | regex_replace(marker_pattern, '') -%}
+      {# Legacy shared markers are intentionally preserved: ownership of their
+         per-container contents cannot be proven safely. #}
       {%- set cleaned_content = stripped_content.rstrip('\n') -%}
       {%- if cleaned_content != '' -%}
       {{ cleaned_content }}
@@ -642,13 +680,21 @@
 
 - name: "Generating experimental root SSH key pair for container access"
   ansible.builtin.command:
-    cmd: >-
-      ssh-keygen -q -t ed25519 -N '' -C
-      podman-root@{{ podman_container_effective.parameters.name }}
-      -f {{ podman_container_ssh_private_key_path }}
+    argv:
+      - "ssh-keygen"
+      - "-q"
+      - "-t"
+      - "ed25519"
+      - "-N"
+      - ""
+      - "-C"
+      - "podman-root@{{ podman_container_effective.parameters.name }}"
+      - "-f"
+      - "{{ podman_container_ssh_private_key_path }}"
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
     - not podman_container_ssh_private_key_stat.stat.exists
+  changed_when: true
 
 - name: "Re-checking generated container SSH private key"
   ansible.builtin.stat:
@@ -675,9 +721,24 @@
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
 
 - name: "Deriving missing SSH public key from private key"
-  ansible.builtin.shell: >
-    ssh-keygen -y -f {{ podman_container_ssh_private_key_path }} >
-    {{ podman_container_ssh_public_key_path }}
+  ansible.builtin.command:
+    argv: ["ssh-keygen", "-y", "-f", "{{ podman_container_ssh_private_key_path }}"]
+  register: podman_container_ssh_public_key_generated
+  changed_when: true
+  no_log: true
+  when:
+    - podman_container_effective.bootstrap_ssh_root_access | default(false)
+    - not podman_container_ssh_public_key_stat.stat.exists
+
+- name: "Writing derived SSH public key"
+  ansible.builtin.copy:
+    dest: "{{ podman_container_ssh_public_key_path }}"
+    content: "{{ podman_container_ssh_public_key_generated.stdout ~ '\n' }}"
+    owner: "{{ podman_container_ssh_host_user }}"
+    group: "{{ podman_container_ssh_host_group }}"
+    mode: "0644"
+  diff: false
+  no_log: true
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
     - not podman_container_ssh_public_key_stat.stat.exists
@@ -705,6 +766,7 @@
   register: podman_container_ssh_public_key_content
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+  no_log: true
 
 - name: "Managing container root authorized_keys"
   ansible.builtin.include_tasks: bootstrap_root_authorized_keys.yml

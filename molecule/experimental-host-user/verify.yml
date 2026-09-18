@@ -94,6 +94,7 @@
 
     - name: "Checking experimental host-user ED25519 host key entry from known_hosts"
       ansible.builtin.shell: >-
+        set -o pipefail &&
         ssh-keygen -F {{ podman_experimental_host_user_target }}
         -f {{ podman_experimental_host_user_known_hosts_path }}
         | grep -F 'ssh-ed25519'

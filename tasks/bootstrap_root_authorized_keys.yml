@@ -1,6 +1,7 @@
 - name: "Preparing explicit container root authorized key lines"
   ansible.builtin.set_fact:
     podman_container_root_authorized_key_lines: "{{ podman_container_controller_ssh_authorized_keys_contents | default([]) }}"
+  no_log: true
 
 - name: "Reading explicit controller-side public keys for container root access"
   ansible.builtin.set_fact:
@@ -10,6 +11,7 @@
         + [lookup('ansible.builtin.file', item, rstrip=false) | string | trim]
       }}
   loop: "{{ podman_container_controller_ssh_authorized_keys_files | default([]) }}"
+  no_log: true
 
 - name: "Adding generated host SSH public key to container root authorized key list"
   ansible.builtin.set_fact:
@@ -20,6 +22,7 @@
       }}
   when:
     - podman_container_effective.bootstrap_ssh_root_access | default(false)
+  no_log: true
 
 - name: "Normalizing final container root authorized key list"
   ansible.builtin.set_fact:
@@ -32,6 +35,7 @@
         | unique
         | list
       }}
+  no_log: true
 
 - name: "Checking that container root authorized keys were resolved"
   ansible.builtin.assert:
@@ -40,20 +44,21 @@
     fail_msg: >-
       No container root authorized keys were resolved for
       {{ podman_container_effective.parameters.name }}
+  no_log: true
 
 - name: "Ensuring container root SSH directory exists"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "mkdir -p /root/.ssh && chmod 700 /root/.ssh"
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sh", "-lc", "mkdir -p /root/.ssh && chmod 700 /root/.ssh"]
   changed_when: false
+  no_log: true
 
 - name: "Reading existing container root authorized_keys"
-  ansible.builtin.command: >-
-    podman exec {{ podman_container_effective.parameters.name }}
-    sh -lc 'cat /root/.ssh/authorized_keys'
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "cat", "/root/.ssh/authorized_keys"]
   register: podman_container_existing_authorized_keys
   changed_when: false
   failed_when: false
+  no_log: true
 
 - name: "Calculating missing container root authorized keys"
   ansible.builtin.set_fact:
@@ -69,63 +74,64 @@
             | list
           )
       }}
+  no_log: true
 
-- name: "Creating temporary authorized keys file on host"
-  ansible.builtin.tempfile:
-    state: file
-    suffix: ".authorized_keys"
-  register: podman_container_authorized_keys_tempfile
-  when:
-    - (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+- name: "Stage and install resolved container root authorized keys"
+  when: (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+  no_log: true
+  block:
+    - name: "Creating temporary authorized keys file on host"
+      ansible.builtin.tempfile:
+        state: file
+        suffix: ".authorized_keys"
+      register: podman_container_authorized_keys_tempfile
 
-- name: "Writing resolved container root authorized keys to temporary host file"
-  ansible.builtin.copy:
-    dest: "{{ podman_container_authorized_keys_tempfile.path }}"
-    content: "{{ (podman_container_missing_root_authorized_key_lines | default([])) | join('\n') ~ '\n' }}"
-    owner: root
-    group: root
-    mode: "0600"
-  when:
-    - (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+    - name: "Writing resolved container root authorized keys to temporary host file"
+      ansible.builtin.copy:
+        dest: "{{ podman_container_authorized_keys_tempfile.path }}"
+        content: "{{ (podman_container_missing_root_authorized_key_lines | default([])) | join('\n') ~ '\n' }}"
+        owner: root
+        group: root
+        mode: "0600"
+      diff: false
 
-- name: "Copying resolved container root authorized keys into container"
-  ansible.builtin.command:
-    cmd: >-
-      podman cp {{ podman_container_authorized_keys_tempfile.path }}
-      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-root-authorized_keys
-  changed_when: false
-  when:
-    - (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+    - name: "Copying resolved container root authorized keys into container"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "cp"
+          - "{{ podman_container_authorized_keys_tempfile.path }}"
+          - "{{ podman_container_effective.parameters.name }}:/tmp/idarsi-root-authorized_keys"
+      changed_when: false
 
-- name: "Installing resolved SSH public keys into container root authorized_keys"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "touch /root/.ssh/authorized_keys &&
-    chmod 600 /root/.ssh/authorized_keys &&
-    changed=0 &&
-    while IFS= read -r key_line || [ -n \"\$key_line\" ]; do
-      if [ -z \"\$key_line\" ]; then
-        continue;
-      fi;
-      if ! grep -qxF \"\$key_line\" /root/.ssh/authorized_keys 2>/dev/null; then
-        printf '%s\n' \"\$key_line\" >> /root/.ssh/authorized_keys &&
-        changed=1;
-      fi;
-    done < /tmp/idarsi-root-authorized_keys &&
-    rm -f /tmp/idarsi-root-authorized_keys &&
-    if [ \"\$changed\" -eq 1 ]; then
-      echo CHANGED;
-    else
-      echo UNCHANGED;
-    fi"
-  register: podman_container_authorized_keys_result
-  changed_when: "'CHANGED' in (podman_container_authorized_keys_result.stdout | default(''))"
-  when:
-    - (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+    - name: "Installing resolved SSH public keys into container root authorized_keys"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "sh"
+          - "-lc"
+          - >-
+            touch /root/.ssh/authorized_keys && chmod 600 /root/.ssh/authorized_keys &&
+            changed=0 && while IFS= read -r key_line || [ -n "$key_line" ]; do
+            [ -z "$key_line" ] && continue; if ! grep -qxF "$key_line"
+            /root/.ssh/authorized_keys 2>/dev/null; then printf '%s\n' "$key_line"
+            >> /root/.ssh/authorized_keys && changed=1; fi; done
+            < /tmp/idarsi-root-authorized_keys && rm -f /tmp/idarsi-root-authorized_keys
+            && if [ "$changed" -eq 1 ]; then echo CHANGED; else echo UNCHANGED; fi
+      register: podman_container_authorized_keys_result
+      changed_when: "'CHANGED' in (podman_container_authorized_keys_result.stdout | default(''))"
 
-- name: "Removing temporary authorized keys file from host"
-  ansible.builtin.file:
-    path: "{{ podman_container_authorized_keys_tempfile.path }}"
-    state: absent
-  when:
-    - (podman_container_missing_root_authorized_key_lines | default([])) | length > 0
+  always:
+    - name: "Removing temporary authorized keys file from container"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "rm", "-f", "/tmp/idarsi-root-authorized_keys"]
+      changed_when: false
+      failed_when: false
+
+    - name: "Removing temporary authorized keys file from host"
+      ansible.builtin.file:
+        path: "{{ podman_container_authorized_keys_tempfile.path }}"
+        state: absent
+      when: podman_container_authorized_keys_tempfile is defined

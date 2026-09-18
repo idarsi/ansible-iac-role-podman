@@ -128,7 +128,16 @@
           - podman_lifecycle_stopped_status.stdout in ["exited", "stopped"]
         fail_msg: "Lifecycle scenario failed to stop container"
 
-- name: Ensure lifecycle container is removed
+- name: Ensure lifecycle container is running before removal safety check
+  hosts: all
+  become: false
+  tasks:
+    - name: "Starting lifecycle container before removal"
+      ansible.builtin.command:
+        argv: ["podman", "start", "molecule-rhel9-lifecycle"]
+      changed_when: true
+
+- name: Ensure lifecycle container is removed safely while running
   hosts: all
   become: false
   vars:

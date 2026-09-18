@@ -18,7 +18,7 @@ iac_blueprint:
       - preset: rhel9
         parameters:
           name: "rhel9-init"
-        command: "sleep infinity"
+        command: ["sleep", "infinity"]
 ```
 
 ## Bootstrap packages
@@ -90,6 +90,10 @@ iac_blueprint:
         bootstrap_ssh_known_hosts_path: "/home/automation/.ssh/known_hosts"
 ```
 
+Custom SSH artifact paths must be absolute, contain no whitespace, and must not
+contain `..` path components. This prevents the argv-based `ssh-keygen` step
+from writing outside the explicitly selected location.
+
 By default the generated private key path is:
 
 ```text
@@ -109,6 +113,12 @@ Notes:
 - use `-p <port>` only when the container SSH port is published on the host
 - when connecting directly to the container IP, use the container IP without
   `-p` unless you changed the SSH port inside the container
+
+Known-hosts migration note: current entries use a marker containing the
+container name. The legacy shared marker is preserved because the role cannot
+prove which historical container entries it owns. Review and remove that old
+block manually, or retain it during migration; the role will not delete
+ambiguous content.
 
 ## Controller-side authorized keys
 
@@ -144,6 +154,8 @@ Notes:
 - file-path lookups happen on the Ansible controller, not on the Podman host
 - the role appends only missing keys and keeps existing non-managed
   `authorized_keys` entries intact
+- authorized-key staging files are removed even when a copy or installation
+  step fails
 - when controller-side keys are configured, the role also writes the same sshd
   root public key login policy as `bootstrap_ssh_root_access`
 - use this path when you already manage the private key on the Ansible

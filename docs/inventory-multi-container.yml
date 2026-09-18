@@ -20,7 +20,7 @@ servers:
             environment:
               APP_ENV: production
               APP_PORT: "8080"
-            command: "sleep infinity"
+            command: ["sleep", "infinity"]
           - preset: rhel9
             parameters:
               name: "test-systemd"
