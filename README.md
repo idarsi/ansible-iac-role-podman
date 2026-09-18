@@ -1,5 +1,8 @@
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
+> **Maturity State: Alpha**<br>
+> **RC Readiness: 58%**
+
 **COPYRIGHT** 2026 ^(ida|arsi)$ collective  
 **LICENSE** MIT License [LICENSE](LICENSE)  
 **AUTHORS**
@@ -73,7 +76,7 @@ iac_blueprint:
       - image: "docker.io/library/alpine:latest"
         parameters:
           name: "minimal"
-        command: "sleep infinity"
+        command: ["sleep", "infinity"]
 ```
 
 Preset-based systemd container with SSH:
@@ -96,6 +99,12 @@ iac_blueprint:
           - sshd
         bootstrap_ssh_root_access: true
 ```
+
+The systemd/root-SSH example is intentionally an explicit high-risk example:
+it requires a privileged container, a host cgroup bind, and exposes SSH. Use a
+non-root SSH account and an unprivileged container for normal workloads. Images
+are mutable unless an immutable digest is supplied; production inventories
+should pin image digests.
 
 Documentation map
 =================
@@ -220,3 +229,59 @@ molecule test -s experimental-ip
 molecule test -s experimental-host-user
 molecule test -s experimental-rhel9-preset
 ```
+
+Security audit residual risks
+=============================
+
+The 2026 security audit findings are tracked here so that limitations are not
+hidden by the hardening changes:
+
+- **P01/P02:** Host Podman operations now use `command` argv and container
+  names are restricted to a safe identifier grammar. Arbitrary Podman
+  parameter keys remain supported for compatibility; unknown option rejection
+  is therefore not complete. Review inventories before deployment.
+- **P03:** Authorized-key material and generated private-key operations have
+  narrow `no_log`/diff protection. Public host keys are not secrets and remain
+  observable in normal task output where applicable.
+- **P04:** Container removal now stops a running configured container before
+  removing it. Containers not present in the configured list are intentionally
+  not reconciled or removed; the role has no ownership inventory for them.
+- **P05:** The proxy example now requires strict host-key checking and a real
+  known-hosts file. Operators must provision and verify that file out of band.
+- **P06:** Privileged systemd containers and root SSH remain supported as
+  experimental, high-risk compatibility features; they are not made safe by
+  the role and must be explicitly reviewed.
+- **P07:** Authorized-key management is additive for compatibility. Removing a
+  key from inventory does not revoke it from an existing container. Rebuild or
+  revoke keys separately when revocation is required.
+- **P08:** The managed SSH drop-in is ordered late. Effective settings are
+  checked with `sshd -t` and `sshd -T` on every root-SSH convergence, and
+  restart occurs only after the settings match. A failed change attempts to
+  restore the previous policy and service state, verifies that restoration, and
+  fails explicitly if verification fails; rollback is not silently guaranteed.
+  During migration, the old `50-idarsi-bootstrap-root.conf` is removed only
+  when its content exactly matches the role's former policy; unrelated content
+  is preserved.
+- **P09:** Podman configuration is updated through a managed block with
+  `create: true`, so unrelated sections are preserved and an absent file is
+  created. Existing unmanaged duplicate `[network]` sections are rejected;
+  operators must merge them before convergence.
+- **P10:** Container commands use an argv list as the secure canonical form,
+  for example `["sh", "-c", "echo safe"]`. Simple legacy strings are still
+  accepted and split on whitespace. Quoted arguments and shell metacharacters
+  are rejected with an actionable validation error; shell execution is never
+  used by the role.
+- **P11:** Known-hosts entries use per-container markers, preserving entries
+  for other managed containers. The old shared marker is deliberately left
+  untouched because its ownership and container association cannot be proven;
+  operators must migrate it explicitly after review.
+- **P12/P14:** Running containers are stopped before removal; inspect failures,
+  paused states, and unknown states are refused and never removed. The
+  `initialized` state is removable. These are guardrails, not runtime-tested
+  guarantees in this environment. Command argument state is rebuilt per
+  container and statically type-checked; runtime argv behavior remains
+  unverified without Ansible.
+- **P13:** The shared filesystem task library is a submodule and is not changed
+  by this patch. Its default mode and secret diff behavior remain an external
+  dependency; use restrictive modes and `diff: false` in filesystem records
+  carrying secrets.

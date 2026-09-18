@@ -15,19 +15,62 @@
   ansible.builtin.assert:
     that:
       - podman_container_record is defined
+      - >-
+        podman_container_record.parameters is defined
+        or (
+          podman_container_record.preset is defined
+          and podman_container_record.preset in podman_container_presets
+          and podman_container_presets[podman_container_record.preset].parameters is defined
+        )
     fail_msg: "All tests did not pass"
+
+- name: "Resolving optional container preset for removal"
+  ansible.builtin.set_fact:
+    podman_container_effective: >-
+      {{
+        (
+          podman_container_presets[podman_container_record.preset]
+          if (podman_container_record.preset is defined and podman_container_record.preset is not none)
+          else {}
+        ) | combine(podman_container_record, recursive=True)
+      }}
+
+- name: "Checking removable container name"
+  ansible.builtin.assert:
+    that:
+      - podman_container_effective.parameters.name is defined
+      - podman_container_effective.parameters.name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+    fail_msg: "Container removal requires a safe parameters.name value"
 
 ###############################################################################
 # ENSURING CONTAINER IS REMOVED
 ###############################################################################
 
 - name: "Checking container status"
-  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_record.parameters.name }}
+  ansible.builtin.command:
+    argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "{{ podman_container_effective.parameters.name }}"]
   register: container_active
   changed_when: false
   failed_when: false
 
-- name: "Ensuring container is absent"
-  ansible.builtin.command: podman rm {{ podman_container_record.parameters.name }}
+- name: "Stopping container before removal"
+  ansible.builtin.command:
+    argv: ["podman", "stop", "{{ podman_container_effective.parameters.name }}"]
   changed_when: true
-  when: container_active.stdout == "exited"
+  when: container_active.rc == 0 and container_active.stdout == "running"
+
+- name: "Rejecting paused or unknown container state"
+  ansible.builtin.assert:
+    that:
+      - container_active.stdout in ["running", "exited", "created", "configured", "initialized", "stopped"]
+    fail_msg: >-
+      Refusing container removal because Podman reported unsupported state
+      '{{ container_active.stdout | default('unknown') }}'. Paused or unknown
+      containers must be handled explicitly by the operator.
+  when: container_active.rc == 0
+
+- name: "Ensuring stopped container is absent"
+  ansible.builtin.command:
+    argv: ["podman", "rm", "{{ podman_container_effective.parameters.name }}"]
+  changed_when: true
+  when: container_active.rc == 0 and container_active.stdout in ["running", "exited", "created", "configured", "initialized", "stopped"]

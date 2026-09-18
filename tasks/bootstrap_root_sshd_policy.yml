@@ -7,10 +7,16 @@
       KbdInteractiveAuthentication no
       AuthorizedKeysFile .ssh/authorized_keys
 
+- name: "Checking legacy sshd root login policy inside container"
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "cat", "/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf"]
+  register: podman_container_legacy_sshd_policy
+  changed_when: false
+  failed_when: false
+
 - name: "Checking existing sshd root login policy inside container"
-  ansible.builtin.command: >-
-    podman exec {{ podman_container_effective.parameters.name }}
-    sh -lc 'cat /etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf'
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "cat", "/etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf"]
   register: podman_container_existing_sshd_policy
   changed_when: false
   failed_when: false
@@ -19,7 +25,13 @@
   ansible.builtin.set_fact:
     podman_container_sshd_policy_update_needed: >-
       {{
-        podman_container_existing_sshd_policy.rc != 0
+         (
+           podman_container_legacy_sshd_policy.rc == 0
+           and (podman_container_legacy_sshd_policy.stdout | trim)
+               == (podman_container_sshd_root_login_policy_content | trim)
+         )
+         or
+         podman_container_existing_sshd_policy.rc != 0
         or
         (
           (podman_container_existing_sshd_policy.stdout | default('') | trim)
@@ -28,57 +40,271 @@
         )
       }}
 
-- name: "Creating temporary sshd root login policy file on host"
-  ansible.builtin.tempfile:
-    state: file
-    suffix: ".conf"
-  register: podman_container_sshd_policy_tempfile
-  when:
-    - podman_container_sshd_policy_update_needed | bool
+- name: "Stage and validate effective sshd root login policy"
+  when: podman_container_sshd_policy_update_needed | bool
+  block:
+    - name: "Creating temporary sshd root login policy file on host"
+      ansible.builtin.tempfile:
+        state: file
+        suffix: ".conf"
+      register: podman_container_sshd_policy_tempfile
 
-- name: "Writing sshd root login policy to temporary host file"
-  ansible.builtin.copy:
-    dest: "{{ podman_container_sshd_policy_tempfile.path }}"
-    content: "{{ podman_container_sshd_root_login_policy_content }}"
-    owner: root
-    group: root
-    mode: "0600"
-  when:
-    - podman_container_sshd_policy_update_needed | bool
+    - name: "Writing sshd root login policy to temporary host file"
+      ansible.builtin.copy:
+        dest: "{{ podman_container_sshd_policy_tempfile.path }}"
+        content: "{{ podman_container_sshd_root_login_policy_content }}"
+        owner: root
+        group: root
+        mode: "0600"
+      diff: false
 
-- name: "Copying sshd root login policy into container"
+    - name: "Copying staged sshd policy into container"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "cp"
+          - "{{ podman_container_sshd_policy_tempfile.path }}"
+          - "{{ podman_container_effective.parameters.name }}:/tmp/idarsi-sshd-root-login.conf"
+      changed_when: false
+
+    - name: "Backing up current sshd root login policy"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "cp"
+          - "/etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf"
+          - "/tmp/idarsi-sshd-root-login.conf.backup"
+      when: podman_container_existing_sshd_policy.rc == 0
+      changed_when: false
+
+    - name: "Backing up exact legacy sshd root login policy for migration"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "cp"
+          - "/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf"
+          - "/tmp/idarsi-sshd-root-login-legacy.conf.backup"
+      when:
+        - podman_container_legacy_sshd_policy.rc == 0
+        - (podman_container_legacy_sshd_policy.stdout | trim) == (podman_container_sshd_root_login_policy_content | trim)
+      changed_when: false
+
+    - name: "Installing staged sshd root login policy for validation"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "sh"
+          - "-lc"
+          - >-
+            mkdir -p /etc/ssh/sshd_config.d && install -m 0644
+            /tmp/idarsi-sshd-root-login.conf
+            /etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf
+      changed_when: true
+
+    - name: "Validating effective sshd syntax"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-t"]
+      changed_when: false
+
+    - name: "Reading effective sshd settings"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-T"]
+      register: podman_container_effective_sshd_config
+      changed_when: false
+
+    - name: "Checking effective root SSH policy"
+      ansible.builtin.assert:
+        that:
+          - "'permitrootlogin yes' in podman_container_effective_sshd_config.stdout_lines"
+          - "'pubkeyauthentication yes' in podman_container_effective_sshd_config.stdout_lines"
+          - "'passwordauthentication no' in podman_container_effective_sshd_config.stdout_lines"
+          - "'kbdinteractiveauthentication no' in podman_container_effective_sshd_config.stdout_lines"
+          - "'authorizedkeysfile .ssh/authorized_keys' in podman_container_effective_sshd_config.stdout_lines"
+        fail_msg: "The staged sshd policy did not produce the requested effective settings"
+
+    - name: "Removing exactly matched legacy sshd root login policy"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "rm", "-f", "/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf"]
+      when:
+        - podman_container_legacy_sshd_policy.rc == 0
+        - (podman_container_legacy_sshd_policy.stdout | trim) == (podman_container_sshd_root_login_policy_content | trim)
+      changed_when: true
+
+    - name: "Validating effective sshd syntax after legacy migration"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-t"]
+      changed_when: false
+
+    - name: "Reading sshd service state before restart"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "systemctl", "is-active", "sshd"]
+      register: podman_container_sshd_service_state
+      changed_when: false
+      failed_when: false
+
+    - name: "Restarting sshd after effective policy validation"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "systemctl", "restart", "sshd"]
+      changed_when: true
+
+  rescue:
+    - name: "Restoring previous sshd root login policy after validation failure"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "sh"
+          - "-lc"
+          - >-
+            if [ -f /tmp/idarsi-sshd-root-login.conf.backup ]; then install -m
+            0644 /tmp/idarsi-sshd-root-login.conf.backup
+            /etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf; else rm -f
+            /etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf; fi
+      changed_when: false
+      no_log: true
+      register: podman_container_sshd_restore_result
+      failed_when: false
+
+    - name: "Restoring migrated legacy sshd root login policy after validation failure"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "cp"
+          - "/tmp/idarsi-sshd-root-login-legacy.conf.backup"
+          - "/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf"
+      when:
+        - podman_container_legacy_sshd_policy.rc == 0
+        - (podman_container_legacy_sshd_policy.stdout | trim) == (podman_container_sshd_root_login_policy_content | trim)
+      changed_when: false
+      no_log: true
+      register: podman_container_legacy_sshd_restore_result
+      failed_when: false
+
+    - name: "Verifying restored sshd policy file"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "cat", "/etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf"]
+      register: podman_container_restored_sshd_policy
+      changed_when: false
+      failed_when: false
+      when: podman_container_existing_sshd_policy.rc == 0
+
+    - name: "Checking removal of previously absent sshd policy"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "test", "!", "-e", "/etc/ssh/sshd_config.d/99-idarsi-bootstrap-root.conf"]
+      register: podman_container_removed_sshd_policy
+      changed_when: false
+      failed_when: false
+      when: podman_container_existing_sshd_policy.rc != 0
+
+    - name: "Checking restored effective sshd configuration"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-t"]
+      register: podman_container_restored_sshd_validation
+      changed_when: false
+      failed_when: false
+
+    - name: "Restoring active sshd service after failed policy restart"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "systemctl", "restart", "sshd"]
+      changed_when: false
+      failed_when: false
+      register: podman_container_sshd_active_restore_result
+      when:
+        - podman_container_sshd_service_state is defined
+        - podman_container_sshd_service_state.stdout | trim == "active"
+
+    - name: "Restoring inactive sshd service state after failed policy restart"
+      ansible.builtin.command:
+        argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "systemctl", "stop", "sshd"]
+      changed_when: false
+      failed_when: false
+      register: podman_container_sshd_inactive_restore_result
+      when:
+        - podman_container_sshd_service_state is defined
+        - podman_container_sshd_service_state.stdout | trim != "active"
+
+    - name: "Failing because effective sshd policy validation failed"
+      ansible.builtin.assert:
+        that:
+          - podman_container_sshd_restore_result.rc == 0
+          - >-
+            podman_container_legacy_sshd_policy.rc != 0
+            or (podman_container_legacy_sshd_policy.stdout | trim)
+               != (podman_container_sshd_root_login_policy_content | trim)
+            or podman_container_legacy_sshd_restore_result.rc == 0
+          - >-
+            podman_container_existing_sshd_policy.rc != 0
+            or (
+              podman_container_restored_sshd_policy.rc == 0
+              and (podman_container_restored_sshd_policy.stdout | trim)
+                  == (podman_container_existing_sshd_policy.stdout | trim)
+            )
+          - podman_container_existing_sshd_policy.rc == 0 or podman_container_removed_sshd_policy.rc == 0
+          - podman_container_restored_sshd_validation.rc == 0
+          - >-
+            podman_container_sshd_service_state is not defined
+            or (
+              podman_container_sshd_service_state.stdout | trim == "active"
+              and podman_container_sshd_active_restore_result.rc == 0
+            )
+            or (
+              podman_container_sshd_service_state.stdout | trim != "active"
+              and podman_container_sshd_inactive_restore_result.rc == 0
+            )
+        fail_msg: "Rollback was not fully verified; manual sshd policy and service recovery is required"
+
+    - name: "Reporting original sshd policy validation failure"
+      ansible.builtin.fail:
+        msg: "The requested sshd policy was rejected; rollback was verified"
+
+  always:
+    - name: "Removing staged sshd files from container"
+      ansible.builtin.command:
+        argv:
+          - "podman"
+          - "exec"
+          - "{{ podman_container_effective.parameters.name }}"
+          - "rm"
+          - "-f"
+          - "/tmp/idarsi-sshd-root-login.conf"
+          - "/tmp/idarsi-sshd-root-login.conf.backup"
+          - "/tmp/idarsi-sshd-root-login-legacy.conf.backup"
+      changed_when: false
+      failed_when: false
+      no_log: true
+
+    - name: "Removing temporary sshd policy file from host"
+      ansible.builtin.file:
+        path: "{{ podman_container_sshd_policy_tempfile.path }}"
+        state: absent
+      when: podman_container_sshd_policy_tempfile is defined
+
+- name: "Validating steady-state effective sshd root login policy"
   ansible.builtin.command:
-    cmd: >-
-      podman cp {{ podman_container_sshd_policy_tempfile.path }}
-      {{ podman_container_effective.parameters.name }}:/tmp/idarsi-sshd-root-login.conf
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-t"]
   changed_when: false
-  when:
-    - podman_container_sshd_policy_update_needed | bool
 
-- name: "Installing sshd root login policy inside container"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "mkdir -p /etc/ssh/sshd_config.d &&
-    target_file=/etc/ssh/sshd_config.d/50-idarsi-bootstrap-root.conf &&
-    install -m 0644 /tmp/idarsi-sshd-root-login.conf \"\$target_file\" &&
-    rm -f /tmp/idarsi-sshd-root-login.conf &&
-    echo CHANGED"
-  register: podman_container_sshd_policy_result
-  changed_when: "'CHANGED' in (podman_container_sshd_policy_result.stdout | default(''))"
-  when:
-    - podman_container_sshd_policy_update_needed | bool
+- name: "Reading steady-state effective sshd root login policy"
+  ansible.builtin.command:
+    argv: ["podman", "exec", "{{ podman_container_effective.parameters.name }}", "sshd", "-T"]
+  register: podman_container_steady_state_sshd_config
+  changed_when: false
 
-- name: "Restarting sshd after root login policy change"
-  ansible.builtin.shell: >
-    podman exec {{ podman_container_effective.parameters.name }} sh -lc
-    "systemctl restart sshd"
-  changed_when: true
-  when:
-    - podman_container_sshd_policy_update_needed | bool
-
-- name: "Removing temporary sshd root login policy file from host"
-  ansible.builtin.file:
-    path: "{{ podman_container_sshd_policy_tempfile.path }}"
-    state: absent
-  when:
-    - podman_container_sshd_policy_update_needed | bool
+- name: "Checking steady-state effective root SSH policy"
+  ansible.builtin.assert:
+    that:
+      - "'permitrootlogin yes' in podman_container_steady_state_sshd_config.stdout_lines"
+      - "'pubkeyauthentication yes' in podman_container_steady_state_sshd_config.stdout_lines"
+      - "'passwordauthentication no' in podman_container_steady_state_sshd_config.stdout_lines"
+      - "'kbdinteractiveauthentication no' in podman_container_steady_state_sshd_config.stdout_lines"
+      - "'authorizedkeysfile .ssh/authorized_keys' in podman_container_steady_state_sshd_config.stdout_lines"
+    fail_msg: "The effective steady-state sshd policy does not match the requested root SSH policy"

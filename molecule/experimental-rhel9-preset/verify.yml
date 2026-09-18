@@ -91,6 +91,7 @@
 
     - name: "Checking experimental rhel9 preset ED25519 host key entry from known_hosts"
       ansible.builtin.shell: >-
+        set -o pipefail &&
         ssh-keygen -F {{ podman_experimental_rhel9_preset_target }}
         -f {{ podman_experimental_rhel9_preset_known_hosts_path }}
         | grep -F 'ssh-ed25519'

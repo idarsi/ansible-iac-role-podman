@@ -4,7 +4,8 @@
   become: false
   tasks:
     - name: "Checking podman package is installed"
-      ansible.builtin.command: rpm -q podman
+      ansible.builtin.package_facts:
+        manager: "auto"
       register: podman_package
       changed_when: false
 
@@ -76,7 +77,7 @@
     - name: "Verifying managed Podman state"
       ansible.builtin.assert:
         that:
-          - podman_package.rc == 0
+          - "'podman' in podman_package.ansible_facts.packages"
           - podman_config_stat.stat.exists
           - "'[network]' in (podman_config.content | b64decode)"
           - "'network_backend = \"netavark\"' in (podman_config.content | b64decode)"

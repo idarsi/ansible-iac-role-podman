@@ -1,0 +1,50 @@
+---
+- name: "Validate role Podman argv task paths without host mutation"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    podman_container_effective:
+      image: "docker.io/library/alpine:latest"
+      parameters:
+        name: "argv-fixture"
+        publish:
+          - "8080:80"
+          - "8443:443"
+        privileged: true
+        tty: false
+        volume:
+          - "/srv/one:/one:ro"
+          - "/srv/two:/two:ro"
+        nullable: null
+      environment:
+        KEEP: "value"
+        DROP: null
+      command: ["sleep", "infinity"]
+      bootstrap_packages:
+        - "openssh-server"
+        - "ca-certificates"
+  tasks:
+    - name: "Include the role container argv task path"
+      ansible.builtin.include_tasks: "../tasks/container_create_argv.yml"
+
+    - name: "Set the controlled package-manager result used by the role task"
+      ansible.builtin.set_fact:
+        podman_container_package_manager:
+          stdout: "dnf"
+
+    - name: "Include the role bootstrap package argv task path"
+      ansible.builtin.include_tasks: "../tasks/container_bootstrap_package_argv.yml"
+
+    - name: "Assert role argv construction semantics"
+      ansible.builtin.assert:
+        that:
+          - podman_container_create_argv | type_debug == "list"
+          - podman_container_create_argv == [
+              "podman", "create", "-it", "--name", "argv-fixture", "--publish",
+              "8080:80", "--publish", "8443:443", "--privileged", "--volume",
+              "/srv/one:/one:ro", "--volume", "/srv/two:/two:ro", "--env",
+              "KEEP=value", "docker.io/library/alpine:latest", "sleep", "infinity"
+            ]
+          - podman_bootstrap_package_argv | type_debug == "list"
+          - podman_bootstrap_package_argv == ["podman", "exec", "argv-fixture", "dnf", "install", "-y", "openssh-server", "ca-certificates"]

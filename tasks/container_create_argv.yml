@@ -1,0 +1,109 @@
+---
+- name: "Building Podman create argv"
+  ansible.builtin.set_fact:
+    podman_container_create_argv: ["podman", "create", "-it"]
+
+- name: "Checking container command format"
+  ansible.builtin.assert:
+    that:
+      - >-
+        podman_container_effective.command is sequence
+        or podman_container_effective.command is string
+      - >-
+        podman_container_effective.command is not string
+        or (podman_container_effective.command | trim) != ""
+      - >-
+        podman_container_effective.command is not string
+        or not (podman_container_effective.command is search("[\"';&|$<>`(){}*!?\\\\]"))
+    fail_msg: >-
+      Container command must be a non-empty argv list (recommended), or a
+      simple unquoted command string containing only whitespace-separated
+      arguments. Quoted arguments and shell metacharacters are unsupported;
+      use an argv list such as ["sh", "-c", "echo safe"] instead.
+  when:
+    - "'command' in podman_container_effective"
+    - podman_container_effective.command is not none
+
+- name: "Checking container command argv list"
+  ansible.builtin.assert:
+    that:
+      - podman_container_effective.command | length > 0
+    fail_msg: >-
+      Container command argv lists must be non-empty; provide at least one
+      scalar string argument, for example ["sleep", "infinity"].
+  when:
+    - "'command' in podman_container_effective"
+    - podman_container_effective.command is not none
+    - podman_container_effective.command is sequence
+    - podman_container_effective.command is not string
+
+- name: "Checking container command argv elements"
+  ansible.builtin.assert:
+    that:
+      - >-
+        podman_container_effective.command | select('string') | list | length
+        == podman_container_effective.command | length
+    fail_msg: >-
+      Every container command argv element must be a scalar string; use an
+      argv list such as ["sh", "-c", "echo safe"] instead of nested lists,
+      mappings, numbers, booleans, or null values.
+  when:
+    - "'command' in podman_container_effective"
+    - podman_container_effective.command is not none
+    - podman_container_effective.command is sequence
+    - podman_container_effective.command is not string
+
+- name: "Building Podman parameter argv"
+  ansible.builtin.set_fact:
+    podman_container_parameter_args: >-
+      {%- set args = [] -%}
+      {%- for parameter in podman_container_effective.parameters | dict2items -%}
+      {%- if parameter.value is sequence and parameter.value is not string -%}
+      {%- for value in parameter.value -%}
+      {%- if value is not none -%}
+      {%- set _ = args.extend(['--' ~ parameter.key, value | string]) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {%- elif parameter.value is sameas true -%}
+      {%- set _ = args.append('--' ~ parameter.key) -%}
+      {%- elif parameter.value is not sameas false and parameter.value is not none -%}
+      {%- set _ = args.extend(['--' ~ parameter.key, parameter.value | string]) -%}
+      {%- endif -%}
+      {%- endfor -%}
+      {{ args }}
+
+- name: "Adding container parameters to Podman create argv"
+  ansible.builtin.set_fact:
+    podman_container_create_argv: "{{ podman_container_create_argv + podman_container_parameter_args }}"
+
+- name: "Adding non-null container environment values to Podman create argv"
+  ansible.builtin.set_fact:
+    podman_container_create_argv: >-
+      {{ podman_container_create_argv + ['--env', podman_environment.key ~ '=' ~ (podman_environment.value | string)] }}
+  loop: "{{ podman_container_effective.environment | default({}) | dict2items }}"
+  loop_control:
+    loop_var: podman_environment
+  when:
+    - podman_container_effective.environment is defined
+    - podman_environment.value is not none
+
+- name: "Adding image and optional command to Podman create argv"
+  ansible.builtin.set_fact:
+    podman_container_create_argv: >-
+      {{ podman_container_create_argv + [podman_container_effective.image] +
+          ((podman_container_effective.command
+            if (podman_container_effective.command is sequence and
+                podman_container_effective.command is not string)
+            else (podman_container_effective.command | string | split(' ') |
+                  reject('equalto', '') | list))
+          if (('command' in podman_container_effective) and podman_container_effective.command is not none)
+          else []) }}
+
+- name: "Checking Podman create argv type"
+  ansible.builtin.assert:
+    that:
+      - podman_container_create_argv is sequence
+      - podman_container_create_argv is not string
+      - podman_container_create_argv | length > 0
+      - podman_container_create_argv | map('string') | list | length == podman_container_create_argv | length
+    fail_msg: "Podman create argv must be a non-empty list of scalar arguments"

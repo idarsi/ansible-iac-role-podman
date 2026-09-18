@@ -35,7 +35,7 @@
 
 - name: "Rendering configuration lines"
   ansible.builtin.set_fact:
-    rendered_lines: |
+    podman_rendered_network_configuration: |
       [network]
       {% for item in podman_network_configuration | dict2items if item.value is not none %}
       {% if item.value is string %}
@@ -46,14 +46,44 @@
       {% endfor %}
   when: podman_network_configuration is defined
 
+- name: "Reading existing Podman configuration before network update"
+  ansible.builtin.slurp:
+    path: "{{ podman_containers_conf }}"
+  register: podman_existing_containers_conf
+  failed_when: false
+  when: podman_rendered_network_configuration is defined
+
+- name: "Checking for unmanaged duplicate Podman network section"
+  ansible.builtin.set_fact:
+    podman_unmanaged_network_section: >-
+      {{
+        (
+          podman_existing_containers_conf.content | default('') | b64decode
+          | regex_replace('(?ms)^# BEGIN ANSIBLE-IAC-ROLE-PODMAN NETWORK CONFIGURATION\\n.*?^# END ANSIBLE-IAC-ROLE-PODMAN NETWORK CONFIGURATION\\n?', '')
+        ) is search('(?m)^\\s*\\[network\\]\\s*$')
+      }}
+  when: podman_rendered_network_configuration is defined
+
+- name: "Rejecting unmanaged duplicate Podman network section"
+  ansible.builtin.assert:
+    that:
+      - not (podman_unmanaged_network_section | bool)
+    fail_msg: >-
+      {{ podman_containers_conf }} already contains an unmanaged [network]
+      section. Refusing to create duplicate TOML sections; merge it into the
+      role-managed network block before convergence.
+  when: podman_rendered_network_configuration is defined
+
 - name: "Ensuring Podman configuration"
-  ansible.builtin.copy:
-    content: "{{ rendered_lines }}"
+  ansible.builtin.blockinfile:
     dest: "{{ podman_containers_conf }}"
+    create: true
+    block: "{{ podman_rendered_network_configuration }}"
+    marker: "# {mark} ANSIBLE-IAC-ROLE-PODMAN NETWORK CONFIGURATION"
     mode: "0640"
     owner: "root"
     group: "root"
-  when: rendered_lines is defined
+  when: podman_rendered_network_configuration is defined
 
 ###############################################################################
 # ENSURING FILESYSTEM CONFIGURATION

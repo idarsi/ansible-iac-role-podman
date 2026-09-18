@@ -9,4 +9,4 @@ servers:
           - image: "docker.io/library/alpine:latest"
             parameters:
               name: "minimal"
-            command: "sleep infinity"
+            command: ["sleep", "infinity"]

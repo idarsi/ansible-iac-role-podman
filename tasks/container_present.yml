@@ -36,6 +36,9 @@
       - podman_container_effective.parameters is defined
       - podman_container_effective.parameters.name is defined
       - (podman_container_effective.parameters.name | string | trim) != ""
+      - >-
+        (podman_container_effective.parameters.name | string | trim) is
+        match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
       - >
         (
           podman_container_record.preset is not defined
@@ -51,52 +54,24 @@
 # ENSURING CONTAINER IS PRESENT
 ###############################################################################
 
-- name: "Rendering configuration lines"
-  ansible.builtin.set_fact:
-    rendered_lines: |
-      {% for item in podman_container_effective.parameters | dict2items if item.value is not none %}
-      {% if item.key == 'volume' and item.value is iterable and item.value is not string %}
-      {% for volume in item.value %}
-      --{{ item.key }} "{{ volume }}" \
-      {% endfor %}
-      {% elif item.value is sameas true %}
-      --{{ item.key }} \
-      {% elif item.value is sameas false %}
-      {% else %}
-      --{{ item.key }} {{ item.value }} \
-      {% endif %}
-      {% endfor %}
-  when: podman_container_effective.parameters is defined
-
-- name: "Rendering environment variables for container"
-  ansible.builtin.set_fact:
-    rendered_lines: |
-      {{ rendered_lines | default(omit) }} \
-      {% for item in podman_container_effective.environment | dict2items if item.value is not none %}
-      --env {{ item.key }}={{ item.value }} \
-      {% endfor %}
-  when: podman_container_effective.environment is defined
-
-- name: "Rendering optional post-image command arguments"
-  ansible.builtin.set_fact:
-    rendered_command: "{{ podman_container_effective.command }}"
-  when:
-    - podman_container_effective.command is defined
-    - podman_container_effective.command is not none
-    - (podman_container_effective.command | string | trim) != ""
+- name: "Building safe Podman create argv"
+  ansible.builtin.include_tasks: container_create_argv.yml
 
 - name: "Checking container status"
-  ansible.builtin.command: podman inspect --format '{{ "{{ .State.Status }}" }}' {{ podman_container_effective.parameters.name }}
+  ansible.builtin.command:
+    argv:
+      - "podman"
+      - "inspect"
+      - "--format"
+      - "{{ '{{ .State.Status }}' }}"
+      - "{{ podman_container_effective.parameters.name }}"
   register: container_active
   changed_when: false
   failed_when: false
 
 - name: "Ensuring container is present"
-  ansible.builtin.shell: >
-    podman create -it
-    {{ rendered_lines | default(omit) }}
-    {{ podman_container_effective.image }}
-    {{ rendered_command | default('') }}
+  ansible.builtin.command:
+    argv: "{{ podman_container_create_argv }}"
   changed_when: true
   environment:
     http_proxy: "{{ http_proxy | default(omit) }}"
