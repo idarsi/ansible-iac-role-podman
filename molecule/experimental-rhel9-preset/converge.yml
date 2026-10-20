@@ -13,7 +13,6 @@
         containers:
           - preset: rhel9
             parameters:
-              name: "molecule-rhel9-experimental-rhel9-preset"
               systemd: always
               privileged: true
               volume:

@@ -3,9 +3,9 @@
   hosts: all
   become: false
   vars:
-    podman_experimental_rhel9_preset_container_name: "molecule-rhel9-experimental-rhel9-preset"
-    podman_experimental_rhel9_preset_private_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental-rhel9-preset"
-    podman_experimental_rhel9_preset_public_key_path: "/root/.ssh/id_ed25519_podman_molecule-rhel9-experimental-rhel9-preset.pub"
+    podman_experimental_rhel9_preset_container_name: "rhel9"
+    podman_experimental_rhel9_preset_private_key_path: "/root/.ssh/id_ed25519_podman_rhel9"
+    podman_experimental_rhel9_preset_public_key_path: "/root/.ssh/id_ed25519_podman_rhel9.pub"
     podman_experimental_rhel9_preset_known_hosts_path: "/root/.ssh/known_hosts"
   tasks:
     - name: "Checking experimental rhel9 preset container status"

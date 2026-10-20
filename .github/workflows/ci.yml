@@ -1,0 +1,30 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  fast-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: "3.12.8"
+      - name: Install pinned Ansible tools
+        run: python -m pip install ansible-core==2.20.8 ansible-lint==26.8.0
+      - name: Lint role-owned Ansible code
+        env:
+          ANSIBLE_ROLES_PATH: ..
+        run: ansible-lint --profile production --exclude tasks/shared tasks defaults tests
+      - name: Syntax and deterministic checks
+        run: |
+          ansible-playbook --syntax-check -i localhost, tests/argv-construction.yml
+          ansible-playbook -i localhost, tests/argv-construction.yml
+          ansible-playbook --syntax-check -i localhost, tests/blueprint-validation.yml
+          ansible-playbook -i localhost, tests/blueprint-validation.yml
+          ansible-playbook --check -i localhost, tests/blueprint-validation.yml
