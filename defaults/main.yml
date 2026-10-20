@@ -21,9 +21,8 @@ no_proxy: ""
 ###############################################################################
 
 iac_supported_os:
-  - { name: "Rocky", versions: ["8", "9", "10"] }
-  - { name: "RedHat", versions: ["8", "9"] }
-  - { name: "Fedora", versions: ["41", "42"] }
+  - { name: "Rocky", versions: ["9", "10"] }
+  - { name: "RedHat", versions: ["9", "10"] }
 
 ###############################################################################
 # DNF CONFIGURATION
@@ -52,6 +51,23 @@ podman_skip_container_guard: false
 podman_container_presets:
   rhel9:
     image: "registry.access.redhat.com/ubi9-init"
+    parameters:
+      name: "rhel9"
+
+# Supported podman create option names. Unknown options are rejected before
+# task execution rather than passed to the command line.
+podman_create_parameter_keys:
+  - name
+  - hostname
+  - ip
+  - publish
+  - privileged
+  - systemd
+  - volume
+  - network
+  - tty
+  - interactive
+  - user
 
 podman_debug_bootstrap_ssh: false
 podman_debug_bootstrap_ssh_artifact_dir: "/tmp/ansible-iac-role-podman-debug"

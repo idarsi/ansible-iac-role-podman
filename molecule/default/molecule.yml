@@ -2,6 +2,15 @@ driver:
   name: podman
 
 platforms:
+  - name: instance-idarsi-rl9
+    image: docker.io/idarsi/rockylinux-init:9
+    command: /sbin/init
+    privileged: true
+    pre_build_image: true
+    systemd: "true"
+    tty: true
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup:rw
   - name: instance-idarsi-rl10
     image: docker.io/idarsi/rockylinux-init:10
     command: /sbin/init

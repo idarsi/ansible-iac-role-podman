@@ -1,0 +1,206 @@
+---
+- name: Validate public validate state through role entrypoint
+  hosts: localhost
+  connection: local
+  gather_facts: true
+  vars:
+    state: validate
+    iac_supported_os:
+      - name: "{{ ansible_facts['distribution'] }}"
+        versions: ["{{ ansible_facts['distribution_major_version'] }}"]
+    podman_container_presets:
+      rhel9:
+        image: "registry.access.redhat.com/ubi9-init"
+        parameters:
+          name: "rhel9"
+    podman_create_parameter_keys: [name, hostname, ip, publish, privileged, systemd, volume, network, tty, interactive, user]
+    # This unreachable proxy would fail the role's runtime precondition outside validate.
+    http_proxy: "http://127.0.0.1:1"
+    https_proxy: ""
+    no_proxy: ""
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              publish: ["8080:80"]
+  tasks:
+    - name: Run validation-only public role state
+      ansible.builtin.include_tasks: ../tasks/main.yml
+
+- name: Validate Podman blueprint contract without host changes
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    podman_container_presets:
+      rhel9:
+        image: registry.access.redhat.com/ubi9-init
+        parameters:
+          name: preset-container
+    podman_create_parameter_keys: [name, publish, volume, privileged]
+    iac_state: container_present
+    iac_blueprint:
+      podman:
+        containers:
+          - preset: rhel9
+            parameters:
+              publish: ["8080:80"]
+  tasks:
+    - name: Valid preset-derived image and publish values pass
+      ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+
+    - name: Preset-injected privileged option must be rejected
+      block:
+        - name: Validate preset with unknown risky create option
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            podman_container_presets:
+              risky:
+                image: example/image
+                parameters:
+                  name: preset-derived-name
+                  security_opt: [label=disable]
+            iac_blueprint:
+              podman:
+                containers:
+                  - preset: risky
+        - name: Fail if preset-injected option was accepted
+          ansible.builtin.fail:
+            msg: "Preset-injected unsupported create option unexpectedly passed validation"
+      rescue:
+        - name: Confirm preset-injected option was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid effective Podman create parameters: presets and container overrides must use supported keys and safe value types."
+
+    - name: Malformed nested value must fail with specific message
+      block:
+        - name: Validate malformed parameter mapping
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    parameters:
+                      name: valid-name
+                      publish: {port: 80}
+        - name: Fail if malformed input was accepted
+          ansible.builtin.fail:
+            msg: "Malformed nested parameter unexpectedly passed validation"
+      rescue:
+        - name: Confirm malformed parameter was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Unknown top-level key must fail with specific message
+      block:
+        - name: Validate unknown key
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                unsupported: true
+        - name: Fail if unknown key was accepted
+          ansible.builtin.fail:
+            msg: "Unknown blueprint key unexpectedly passed validation"
+      rescue:
+        - name: Confirm unknown key was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                "Podman blueprint has an unsupported shape or key, or requested state is invalid. See docs/inventory-structure.md for accepted fields and states."
+                in ansible_failed_result.msg
+
+    - name: Empty image must fail during validate with the record error
+      block:
+        - name: Validate empty image
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: ""
+                    parameters:
+                      name: empty-image
+        - name: Fail if empty image was accepted
+          ansible.builtin.fail:
+            msg: "Empty image unexpectedly passed validation"
+      rescue:
+        - name: Confirm empty image rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Empty preset without effective preset data must fail during validate
+      block:
+        - name: Validate empty preset
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - preset: ""
+        - name: Fail if empty preset was accepted
+          ansible.builtin.fail:
+            msg: "Empty preset unexpectedly passed validation"
+      rescue:
+        - name: Confirm empty preset rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Null preset without an image must fail during validate
+      block:
+        - name: Validate null preset without image
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - preset: null
+        - name: Fail if null preset without image was accepted
+          ansible.builtin.fail:
+            msg: "Null preset without image unexpectedly passed validation"
+      rescue:
+        - name: Confirm null preset without image rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Preset with empty effective image must fail during validate
+      block:
+        - name: Validate preset with empty image
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            podman_container_presets:
+              empty_image:
+                image: ""
+                parameters:
+                  name: empty-preset-image
+            iac_blueprint:
+              podman:
+                containers:
+                  - preset: empty_image
+        - name: Fail if empty preset image was accepted
+          ansible.builtin.fail:
+            msg: "Preset with empty image unexpectedly passed validation"
+      rescue:
+        - name: Confirm empty preset image rejection
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."

@@ -1,0 +1,216 @@
+---
+###############################################################################
+#
+# validate_blueprint.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+###############################################################################
+# VALIDATING BLUEPRINT SHAPE AND STATE
+###############################################################################
+
+- name: "Checking Podman blueprint types, keys, and requested state"
+  ansible.builtin.assert:
+    that:
+      - iac_blueprint.podman is mapping
+      - (iac_blueprint.podman.keys() | list | difference(['configuration', 'directories', 'files', 'binds', 'cron', 'containers']) | length) == 0
+      - iac_state is string
+      - >-
+        iac_state in ['validate', 'present', 'absent', 'install', 'uninstall',
+        'container_present', 'container_absent', 'container_started',
+        'container_stopped']
+      - >-
+        iac_blueprint.podman.configuration is not defined or
+        iac_blueprint.podman.configuration is mapping
+      - >-
+        iac_blueprint.podman.configuration is not defined or
+        iac_blueprint.podman.configuration.network is not defined or
+        iac_blueprint.podman.configuration.network is mapping
+      - iac_blueprint.podman.directories is not defined or iac_blueprint.podman.directories is sequence and iac_blueprint.podman.directories is not string
+      - iac_blueprint.podman.files is not defined or iac_blueprint.podman.files is sequence and iac_blueprint.podman.files is not string
+      - iac_blueprint.podman.binds is not defined or iac_blueprint.podman.binds is sequence and iac_blueprint.podman.binds is not string
+      - iac_blueprint.podman.cron is not defined or iac_blueprint.podman.cron is sequence and iac_blueprint.podman.cron is not string
+      - iac_blueprint.podman.containers is not defined or iac_blueprint.podman.containers is sequence and iac_blueprint.podman.containers is not string
+    fail_msg: >-
+      Podman blueprint has an unsupported shape or key, or requested state is
+      invalid. See docs/inventory-structure.md for accepted fields and states.
+
+- name: "Checking Podman container record structures"
+  ansible.builtin.assert:
+    that:
+      - podman_record is mapping
+      - podman_record.preset is not defined or podman_record.preset is string
+      - podman_record.image is not defined or podman_record.image is string
+      - podman_record.parameters is not defined or podman_record.parameters is mapping
+      - podman_record.image is defined or podman_record.preset is defined
+      - podman_record.image is not defined or (podman_record.image | trim | length) > 0
+      - podman_record.preset is not defined or podman_record.preset is none or podman_record.preset is string and (podman_record.preset | trim | length) > 0
+      - podman_record.preset is not defined or podman_record.preset is none or podman_record.preset in podman_container_presets
+      - >-
+        podman_record.image is defined or
+        (podman_record.preset is string and podman_record.preset in podman_container_presets and
+        podman_container_presets[podman_record.preset] is mapping and
+        podman_container_presets[podman_record.preset].image is defined and
+        podman_container_presets[podman_record.preset].image is string and
+        (podman_container_presets[podman_record.preset].image | trim | length) > 0)
+      - podman_record.environment is not defined or podman_record.environment is mapping
+      - >-
+        podman_record.command is not defined or podman_record.command is none or
+        podman_record.command is string or
+        (podman_record.command is sequence and
+        podman_record.command is not mapping and
+        podman_record.command is not string)
+      - podman_record.bootstrap_packages is not defined or podman_record.bootstrap_packages is sequence and podman_record.bootstrap_packages is not string
+      - podman_record.bootstrap_services is not defined or podman_record.bootstrap_services is sequence and podman_record.bootstrap_services is not string
+      - podman_record.parameters is not defined or (podman_record.parameters.keys() | list | difference(podman_create_parameter_keys) | length) == 0
+      - >-
+        podman_record.parameters is not defined or
+        podman_record.parameters.name is not defined or
+        (podman_record.parameters.name is string and
+        podman_record.parameters.name is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$'))
+      - >-
+        podman_record.parameters is not defined or
+        (podman_record.parameters | dict2items
+        | selectattr('value', 'mapping') | list | length) == 0
+      - >-
+        podman_record.parameters is not defined or
+        (podman_record.parameters | dict2items
+        | rejectattr('key', 'in', ['volume', 'publish'])
+        | selectattr('value', 'sequence')
+        | rejectattr('value', 'string') | list | length) == 0
+      - >-
+        podman_record.parameters is not defined or
+        podman_record.parameters.volume is not defined or
+        podman_record.parameters.volume is string or
+        (podman_record.parameters.volume is sequence and
+        podman_record.parameters.volume is not mapping and
+        podman_record.parameters.volume is not string and
+        (podman_record.parameters.volume | select('mapping') | list | length) == 0 and
+        (podman_record.parameters.volume | select('sequence') | reject('string') | list | length) == 0)
+    fail_msg: "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+  loop: "{{ iac_blueprint.podman.containers | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+
+- name: "Checking effective Podman create parameters after preset overrides"
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({}))
+        | combine(podman_record.parameters | default({}), recursive=True)
+        | dict2items | map(attribute='key') | list
+        | difference(podman_create_parameter_keys) | length) == 0
+      - >-
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({}))
+        | combine(podman_record.parameters | default({}), recursive=True)
+        | dict2items | selectattr('value', 'mapping') | list | length) == 0
+      - >-
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({}))
+        | combine(podman_record.parameters | default({}), recursive=True)
+        | dict2items | rejectattr('key', 'in', ['volume', 'publish'])
+        | selectattr('value', 'sequence') | rejectattr('value', 'string')
+        | list | length) == 0
+      - >-
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({}))
+        | combine(podman_record.parameters | default({}), recursive=True)).name
+        is string and
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({}))
+        | combine(podman_record.parameters | default({}), recursive=True)).name
+        is match('^[A-Za-z0-9][A-Za-z0-9_.-]*$')
+    fail_msg: "Invalid effective Podman create parameters: presets and container overrides must use supported keys and safe value types."
+  loop: "{{ iac_blueprint.podman.containers | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+  when: >-
+    podman_record is mapping and
+    (podman_record.preset is not defined or podman_record.preset is none or
+    podman_record.preset in podman_container_presets)
+
+- name: "Checking Podman container environment values"
+  ansible.builtin.assert:
+    that:
+      - >-
+        podman_record.environment is not defined or
+        (podman_record.environment | dict2items
+        | selectattr('value', 'mapping') | list | length) == 0
+      - >-
+        podman_record.environment is not defined or
+        (podman_record.environment | dict2items
+        | selectattr('value', 'sequence') | rejectattr('value', 'string')
+        | list | length) == 0
+    fail_msg: "Container environment values must be scalar strings, numbers, booleans, or null."
+  loop: "{{ iac_blueprint.podman.containers | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+  when: podman_record is mapping and podman_record.environment is defined and podman_record.environment is mapping
+
+- name: "Checking Podman directory records"
+  ansible.builtin.assert:
+    that:
+      - podman_record is mapping
+      - podman_record.path is defined and podman_record.path is string and podman_record.path | length > 0
+      - podman_record.selinux is not defined or podman_record.selinux is mapping
+    fail_msg: "Each directory record must be a mapping with a non-empty path."
+  loop: "{{ iac_blueprint.podman.directories | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+
+- name: "Checking Podman file records"
+  ansible.builtin.assert:
+    that:
+      - podman_record is mapping
+      - podman_record.path is defined and podman_record.path is string and podman_record.path | length > 0
+      - (podman_record.content is defined) != (podman_record.src is defined)
+      - podman_record.src is not defined or podman_record.src is string and podman_record.src is match('^/')
+      - podman_record.mode is not defined or podman_record.mode is string
+      - podman_record.selinux is not defined or podman_record.selinux is mapping
+    fail_msg: "Each file record requires a path and exactly one of content or absolute src."
+  loop: "{{ iac_blueprint.podman.files | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+
+- name: "Checking Podman bind records"
+  ansible.builtin.assert:
+    that:
+      - podman_record is mapping
+      - podman_record.source is defined and podman_record.source is string and podman_record.source is match('^/')
+      - podman_record.target is defined and podman_record.target is string and podman_record.target is match('^/')
+      - podman_record.purge_on_absent is not defined or podman_record.purge_on_absent is boolean
+      - podman_record.move_from_target is not defined or podman_record.move_from_target is boolean
+    fail_msg: "Each bind record requires absolute source and target paths and boolean safety options."
+  loop: "{{ iac_blueprint.podman.binds | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+
+- name: "Checking Podman cron records"
+  ansible.builtin.assert:
+    that:
+      - podman_record is mapping
+      - podman_record.name is defined and podman_record.name is string and podman_record.name | length > 0
+      - podman_record.cron_file is defined and podman_record.cron_file is string and podman_record.cron_file | length > 0
+      - iac_state not in ['install', 'present'] or podman_record.job is defined and podman_record.job is string
+    fail_msg: "Cron records require name and cron_file; present/install additionally require job."
+  loop: "{{ iac_blueprint.podman.cron | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+
+- name: "Checking requested container lifecycle records"
+  ansible.builtin.assert:
+    that:
+      - >-
+        (podman_record.parameters is defined and podman_record.parameters is mapping and
+        podman_record.parameters.name is defined and
+        (podman_record.parameters.name | string | trim | length) > 0) or
+        (podman_record.preset is string and podman_record.preset in podman_container_presets and
+        podman_container_presets[podman_record.preset].parameters is defined and
+        podman_container_presets[podman_record.preset].parameters is mapping and
+        podman_container_presets[podman_record.preset].parameters.name is defined and
+        (podman_container_presets[podman_record.preset].parameters.name | string | trim | length) > 0)
+      - podman_record.preset is not defined or podman_record.preset is none or podman_record.preset in podman_container_presets
+    fail_msg: "Container lifecycle states require a parameters.name in each record and any preset must exist."
+  loop: "{{ iac_blueprint.podman.containers | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+  when: iac_state in ['container_present', 'container_absent', 'container_started', 'container_stopped']

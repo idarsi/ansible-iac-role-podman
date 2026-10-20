@@ -1,7 +1,8 @@
+> **Maturity State: Beta**<br>
+> **RC Readiness: 78%**
+
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
-> **Maturity State: Alpha**<br>
-> **RC Readiness: 58%**
 
 **COPYRIGHT** 2026 ^(ida|arsi)$ collective  
 **LICENSE** MIT License [LICENSE](LICENSE)  
@@ -50,7 +51,7 @@ Repository checkout
 ===================
 
 This role includes the shared task library as a Git submodule under
-`tasks/shared`.
+`tasks/shared`, pinned at `d70d58eeb31390d36975fb8d9c11dfab88fadc95`.
 
 Clone the repository with submodules:
 
@@ -146,8 +147,12 @@ Supported top-level keys:
 Shared filesystem helpers
 =========================
 
-This role supports `directories:`, `files:`, and `binds:` through the shared
-task library under `tasks/shared`.
+This role supports `directories:`, `files:`, `binds:`, and `cron:` through the shared
+task library under `tasks/shared` (pin above). Shared file tasks pass through
+the requested mode and do not set a secret-safe default mode or suppress diffs.
+Set restrictive `mode` values (for example `"0600"`) for sensitive content;
+do not put credentials in inline content unless the task output/diff exposure
+is acceptable.
 
 For the exact `binds:` record structure and examples, see:
 
@@ -168,6 +173,9 @@ Supported container keys:
 - `bootstrap_ssh_private_key_path`
 - `bootstrap_ssh_known_hosts_path`
 
+Other top-level container record keys are not a supported extension point and
+are currently ignored. Put Podman create options under `parameters`.
+
 Container presets
 =================
 
@@ -183,12 +191,19 @@ Default built-in presets:
 Requirements
 ============
 
-- Operating system (tested on)
-  - Red Hat Enterprise Linux 8
-  - Rocky Linux 10
-
-- Other components
+- Supported target operating systems (declared): Rocky Linux 9 and 10, and
+  Red Hat Enterprise Linux 9 and 10.
+- Runtime-tested by this repository's Molecule scenarios: Rocky Linux 9 and
+  10. The current runtime matrix does not cover RHEL 9 or 10.
+- Other requirements:
   - Ansible 2.15 or higher
+  - Git with submodule support; initialize `tasks/shared` at the checked-in
+    commit before invoking states that manage shared filesystem, bind, or cron
+    resources.
+- Target host requires a supported Rocky Linux or RHEL 9/10 system with package-manager
+  access; container lifecycle states require the Podman CLI. Cron requires
+  `cronie`; shared SELinux context records require enabled SELinux and
+  `semanage`.
 
 Code quality
 ============
@@ -236,10 +251,10 @@ Security audit residual risks
 The 2026 security audit findings are tracked here so that limitations are not
 hidden by the hardening changes:
 
-- **P01/P02:** Host Podman operations now use `command` argv and container
-  names are restricted to a safe identifier grammar. Arbitrary Podman
-  parameter keys remain supported for compatibility; unknown option rejection
-  is therefore not complete. Review inventories before deployment.
+- **P01/P02:** Host Podman operations use `command` argv and container names
+  are restricted to a safe identifier grammar. Podman create parameter keys
+  are constrained to the documented allowlist; inventories using other keys
+  must migrate or extend the role allowlist deliberately.
 - **P03:** Authorized-key material and generated private-key operations have
   narrow `no_log`/diff protection. Public host keys are not secrets and remain
   observable in normal task output where applicable.

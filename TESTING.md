@@ -1,15 +1,24 @@
 # Testing
 
 This role uses Molecule with the Podman driver for automated integration
-testing. The scenarios use a Rocky Linux 10 init image and are divided into
+testing. The baseline scenario covers Rocky Linux 9 and 10 init images; other
+scenarios currently use Rocky Linux 10 and are divided into
 baseline, lifecycle, and experimental coverage. Experimental scenarios are
 included in the repository but are not a substitute for the baseline suite.
+The declared support targets are Rocky Linux 9/10 and RHEL 9/10. Runtime
+coverage includes Rocky Linux 9 and 10 only; RHEL 9/10 are documented
+supported targets but are not present in the current test matrix.
+
+Pull requests run a fast CI gate for production-profile lint, syntax checks,
+and deterministic controller-side fixtures. CI checks out the shared-task
+submodule recursively. Runtime/Molecule scenarios are not part of this fast
+gate; run them separately with the approved Idarsi test environment.
 
 ## Automated test matrix
 
 Scenario                         | Platform/image                         | Main coverage
 ---------------------------------|----------------------------------------|------------------------------
-`default`                        | Rocky Linux 10 init                    | Podman installation, network configuration, directories, files, cron, and a running container
+`default`                        | Rocky Linux 9 and 10 init              | Podman installation, network configuration, directories, files, cron, and a running container
 `lifecycle`                      | Rocky Linux 10 init                    | `container_present`, `container_started`, `container_stopped`, and `container_absent`
 `experimental`                   | Rocky Linux 10 init                    | Package and service bootstrap, generated root SSH access, controller and inline authorized keys, and published SSH access
 `experimental-ip`                | Rocky Linux 10 init                    | Generated SSH access and login through the container IP address
@@ -66,25 +75,29 @@ scenario files intentionally retain those schema-compatible forms.
 
 ## Running tests
 
-The lightweight argv validation fixture is executable without Podman or host
-mutation:
+The argv fixture exercises argv construction; the blueprint fixture exercises
+the public `validate` state through `tasks/main.yml`, which bypasses runtime
+checks and state mutation. Both run controller-side without Podman:
 
 ```bash
 ansible-playbook tests/argv-construction.yml
+ansible-playbook tests/blueprint-validation.yml
 ```
 
-It imports the role's `container_create_argv.yml` and
-`container_bootstrap_package_argv.yml` task paths, and covers scalar, repeated
-list, boolean, null, environment, and bootstrap package argv values. The
-fixture is executable with the currently configured `ansible-playbook`; an
-earlier environment lacked that executable, which was a historical local
-tooling blocker rather than a fixture limitation. No dependency installation
-was performed.
+The argv fixture imports `container_create_argv.yml` and
+`container_bootstrap_package_argv.yml` and covers scalar, repeated list,
+boolean, null, environment, and bootstrap package argv values. Blueprint tests
+cover preset-derived lifecycle-name acceptance without specifying
+`parameters.name`, plus exact failure messages for malformed container
+parameters and unknown blueprint keys. This does not prove every task's
+check-mode behavior: package, filesystem, and Podman command tasks do not
+uniformly support check mode. Runtime behavior requires disposable Molecule
+coverage. Local checks do not install dependencies.
 
 Run the production-profile Ansible Lint check from the role directory:
 
 ```bash
-ANSIBLE_ROLES_PATH=.. ansible-lint --profile production
+ANSIBLE_ROLES_PATH=.. ansible-lint --profile production --exclude tasks/shared
 ```
 
 Run the default Molecule scenario:
