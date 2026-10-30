@@ -51,7 +51,7 @@ Repository checkout
 ===================
 
 This role includes the shared task library as a Git submodule under
-`tasks/shared`, pinned at `d70d58eeb31390d36975fb8d9c11dfab88fadc95`.
+`tasks/shared`, pinned at `b1902c1d846c9de56836b2711b4e59e8847519c6`.
 
 Clone the repository with submodules:
 
