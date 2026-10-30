@@ -221,8 +221,8 @@
         | default(
         ansible_user
         | default(ansible_ssh_user, true)
-        | default(ansible_env.SUDO_USER, true)
-        | default(ansible_user_id),
+        | default(ansible_facts['env']['SUDO_USER'], true)
+        | default(ansible_facts['user_id']),
         true
         )
       }}
@@ -296,8 +296,8 @@
         | default(
         ansible_user
         | default(ansible_ssh_user, true)
-        | default(ansible_env.SUDO_USER, true)
-        | default(ansible_user_id),
+        | default(ansible_facts['env']['SUDO_USER'], true)
+        | default(ansible_facts['user_id']),
         true
         )
       }}
