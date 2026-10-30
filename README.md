@@ -1,5 +1,6 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 80%**
+> **RC Readiness: 80%**<br>
+> Assessed at `b9376c5`; runtime coverage is Rocky Linux 9/10 only, RHEL 9/10 remains untested, and representative idempotence, boot activation, and several lifecycle guardrails lack automated runtime evidence. Required CI checks are configured; no result at this assessed commit was available.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
