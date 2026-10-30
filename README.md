@@ -1,5 +1,5 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 78%**
+> **RC Readiness: 80%**
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
@@ -187,6 +187,28 @@ container definition on top of it.
 Default built-in presets:
 
 - `rhel9` -> `registry.access.redhat.com/ubi9-init`
+
+Container records may opt into rootful Podman Quadlet with `quadlet: true`.
+The role renders `/etc/containers/systemd/<name>.container` and manages its
+generated `<name>.service`; Quadlet's `[Install] WantedBy=multi-user.target`
+enables boot startup (these generated services are not enabled with
+`systemctl enable`); a systemd daemon reload runs the generator and applies the
+source unit's install relationship. `container_stopped` stops the workload but
+retains the source definition and its boot enablement; the generated service may
+show `ActiveState=failed` with `Result=exit-code` and status 137 if Podman had to
+SIGKILL it after the stop timeout. This does not hide systemd failures; removal
+of the source unit and enablement occurs only with `container_absent`. Quadlet depends on the Podman systemd generator shipped by
+the target's Podman package and cgroup v2. Only the documented translated
+container options are supported; bootstrap features are incompatible with this
+mode. Switching an existing role-managed name from Quadlet to direct management
+removes its role-owned source unit and reloads systemd. Switching to Quadlet
+fails safely if a container already exists without a role-owned source unit;
+the role cannot establish ownership of containers created outside this role,
+so operators must remove or migrate those explicitly. The lifecycle scenario
+covers rootful Quadlet unit generation, service start/stop, removal, and
+systemd enablement status. It checks enablement status only; it does not reboot
+the host or verify boot-time activation. The scenario also repeats convergence
+but does not claim idempotence based on the aggregate `include_role` result.
 
 Requirements
 ============

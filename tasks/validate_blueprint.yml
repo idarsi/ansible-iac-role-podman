@@ -57,6 +57,19 @@
         (podman_container_presets[podman_record.preset].image | trim | length) > 0)
       - podman_record.environment is not defined or podman_record.environment is mapping
       - >-
+        not (podman_record.quadlet | default(false) | bool) or
+        (podman_record.bootstrap_packages is not defined and
+        podman_record.bootstrap_services is not defined and
+        not (podman_record.bootstrap_ssh_root_access | default(false) | bool) and
+        podman_record.bootstrap_ssh_authorized_keys_contents is not defined and
+        podman_record.bootstrap_ssh_authorized_keys_files is not defined)
+      - >-
+        not (podman_record.quadlet | default(false) | bool) or
+        (podman_record.parameters | default({}) | dict2items
+        | rejectattr('key', 'in', ['name', 'hostname', 'ip', 'publish', 'volume', 'network', 'user'])
+        | list | length) == 0
+      - podman_record.quadlet is not defined or podman_record.quadlet is boolean
+      - >-
         podman_record.command is not defined or podman_record.command is none or
         podman_record.command is string or
         (podman_record.command is sequence and
@@ -140,11 +153,47 @@
         (podman_record.environment | dict2items
         | selectattr('value', 'sequence') | rejectattr('value', 'string')
         | list | length) == 0
-    fail_msg: "Container environment values must be scalar strings, numbers, booleans, or null."
+      - >-
+        podman_record.environment is not defined or
+        (podman_record.environment | dict2items
+        | rejectattr('key', 'match', '^[A-Za-z_][A-Za-z0-9_]*$')
+        | list | length) == 0
+    fail_msg: "Container environment keys must be valid environment-variable identifiers and values must be scalar strings, numbers, booleans, or null."
   loop: "{{ iac_blueprint.podman.containers | default([]) }}"
   loop_control:
     loop_var: podman_record
   when: podman_record is mapping and podman_record.environment is defined and podman_record.environment is mapping
+
+- name: "Rejecting control characters in Quadlet content"
+  ansible.builtin.assert:
+    that:
+      - >-
+        ((podman_record.image | default(podman_container_presets.get(podman_record.preset | default(''), {}).image | default('')))
+        | regex_search('[\\x00-\\x1f\\x7f]')) is none
+      - >-
+        (podman_record.command is not defined or podman_record.command is none or
+        (([podman_record.command] if podman_record.command is string else podman_record.command)
+        | map('string') | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
+      - >-
+        (podman_record.environment is not defined or
+        (podman_record.environment | dict2items
+        | selectattr('key', 'search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
+      - >-
+        (podman_record.environment is not defined or
+        (podman_record.environment | dict2items | map(attribute='value') | map('string')
+        | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
+      - >-
+        ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({})
+        | combine(podman_record.parameters | default({}), recursive=True)
+        | dict2items | map(attribute='value') | flatten
+        | map('string') | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
+    fail_msg: "Quadlet content values must not contain newline or other control characters."
+  loop: "{{ iac_blueprint.podman.containers | default([]) }}"
+  loop_control:
+    loop_var: podman_record
+  when: >-
+    podman_record is mapping and
+    (podman_record.quadlet | default(false) | bool)
 
 - name: "Checking Podman directory records"
   ansible.builtin.assert:

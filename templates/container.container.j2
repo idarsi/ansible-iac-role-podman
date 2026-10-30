@@ -1,0 +1,21 @@
+{# Rootful Quadlet .container unit. #}
+# Managed by ansible-iac-role-podman. Do not remove or edit this ownership marker.
+[Unit]
+Description=Podman Quadlet container {{ podman_container_effective.parameters.name }}
+
+[Container]
+Image={{ podman_container_effective.image }}
+ContainerName={{ podman_container_effective.parameters.name }}
+{% for key, value in podman_container_effective.environment | default({}) | dictsort %}{% if value is not none %}Environment={{ key }}={{ value }}
+{% endif %}{% endfor %}{% if podman_container_effective.command is defined and podman_container_effective.command is not none %}Exec={{ podman_container_effective.command | join(' ') if podman_container_effective.command is sequence and podman_container_effective.command is not string else podman_container_effective.command }}
+{% endif %}{% for key, quadlet_key in [('hostname', 'HostName'), ('ip', 'IP'), ('network', 'Network'), ('user', 'User')] %}{% if podman_container_effective.parameters[key] is defined and podman_container_effective.parameters[key] is not boolean %}{{ quadlet_key }}={{ podman_container_effective.parameters[key] }}
+{% endif %}{% endfor %}{% for value in podman_container_effective.parameters.publish | default([]) if podman_container_effective.parameters.publish is sequence and podman_container_effective.parameters.publish is not string %}PublishPort={{ value }}
+{% endfor %}{% if podman_container_effective.parameters.publish is defined and podman_container_effective.parameters.publish is string %}PublishPort={{ podman_container_effective.parameters.publish }}
+{% endif %}{% for value in podman_container_effective.parameters.volume | default([]) if podman_container_effective.parameters.volume is sequence and podman_container_effective.parameters.volume is not string %}Volume={{ value }}
+{% endfor %}{% if podman_container_effective.parameters.volume is defined and podman_container_effective.parameters.volume is string %}Volume={{ podman_container_effective.parameters.volume }}
+{% endif %}
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target

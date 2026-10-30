@@ -50,6 +50,160 @@
     - name: Valid preset-derived image and publish values pass
       ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
 
+    - name: Quadlet record with supported translated options passes schema validation
+      ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+      vars:
+        iac_blueprint:
+          podman:
+            containers:
+              - image: example/image
+                quadlet: true
+                parameters:
+                  name: quadlet-valid
+                  publish: ["8080:80"]
+
+    - name: Quadlet newline injection in environment is rejected
+      block:
+        - name: Validate newline-bearing environment value
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: true
+                    parameters:
+                      name: quadlet-injection
+                    environment:
+                      SAFE: "value\nExecStart=/bin/evil"
+        - name: Fail if newline injection was accepted
+          ansible.builtin.fail:
+            msg: "Quadlet newline injection unexpectedly passed validation"
+      rescue:
+        - name: Confirm newline injection was rejected precisely
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.results[0].msg == "Quadlet content values must not contain newline or other control characters."
+
+    - name: Quadlet environment key directive injection is rejected by schema
+      block:
+        - name: Validate directive-bearing environment key
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: true
+                    parameters:
+                      name: quadlet-key-injection
+                    environment:
+                      "SAFE\nExecStart=...": harmless
+        - name: Fail if directive-bearing environment key was accepted
+          ansible.builtin.fail:
+            msg: "Quadlet environment key injection unexpectedly passed validation"
+      rescue:
+        - name: Confirm environment key failed schema validation
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Container environment keys must be valid environment-variable identifiers and values must be scalar strings, numbers, " ~
+                "booleans, or null."
+
+    - name: Quadlet newline injection in command and parameter values is rejected
+      block:
+        - name: Validate newline-bearing command
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: true
+                    command: "run\nExecStart=/bin/evil"
+                    parameters:
+                      name: quadlet-injection
+        - name: Fail if command injection was accepted
+          ansible.builtin.fail:
+            msg: "Quadlet command injection unexpectedly passed validation"
+      rescue:
+        - name: Confirm command injection was rejected precisely
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.results[0].msg == "Quadlet content values must not contain newline or other control characters."
+
+    - name: Quadlet record with unsupported parameter must be rejected
+      block:
+        - name: Validate unsupported Quadlet parameter
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: true
+                    parameters:
+                      name: quadlet-invalid
+                      privileged: true
+        - name: Fail if unsupported Quadlet option was accepted
+          ansible.builtin.fail:
+            msg: "Unsupported Quadlet parameter unexpectedly passed validation"
+      rescue:
+        - name: Confirm unsupported Quadlet option was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Quadlet record with bootstrap options must be rejected
+      block:
+        - name: Validate Quadlet record with bootstrap service
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: true
+                    parameters:
+                      name: quadlet-bootstrap-invalid
+                    bootstrap_services: [sshd]
+        - name: Fail if incompatible Quadlet bootstrap option was accepted
+          ansible.builtin.fail:
+            msg: "Quadlet bootstrap option unexpectedly passed validation"
+      rescue:
+        - name: Confirm Quadlet bootstrap option was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: Non-boolean Quadlet value must be rejected
+      block:
+        - name: Validate non-boolean Quadlet value
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: example/image
+                    quadlet: "true"
+                    parameters:
+                      name: quadlet-type-invalid
+        - name: Fail if non-boolean Quadlet value was accepted
+          ansible.builtin.fail:
+            msg: "Non-boolean Quadlet value unexpectedly passed validation"
+      rescue:
+        - name: Confirm non-boolean Quadlet value was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
     - name: Preset-injected privileged option must be rejected
       block:
         - name: Validate preset with unknown risky create option
@@ -115,8 +269,8 @@
           ansible.builtin.assert:
             that:
               - >-
-                "Podman blueprint has an unsupported shape or key, or requested state is invalid. See docs/inventory-structure.md for accepted fields and states."
-                in ansible_failed_result.msg
+                "Podman blueprint has an unsupported shape or key, or requested state is invalid. See
+                docs/inventory-structure.md for accepted fields and states." in ansible_failed_result.msg
 
     - name: Empty image must fail during validate with the record error
       block:

@@ -1,0 +1,37 @@
+---
+###############################################################################
+#
+# quadlet_assert_owned.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+- name: "Inspecting existing Quadlet path without following symlinks"
+  ansible.builtin.stat:
+    path: "{{ podman_quadlet_unit_path }}"
+    follow: false
+  register: podman_quadlet_ownership_stat
+
+- name: "Rejecting a symlink at the managed Quadlet path"
+  ansible.builtin.fail:
+    msg: >-
+      Refusing to manage '{{ podman_quadlet_unit_path }}': it is a symlink.
+      Remove or replace it explicitly before managing this container.
+  when: podman_quadlet_ownership_stat.stat.islnk | default(false)
+
+- name: "Reading existing Quadlet ownership marker"
+  ansible.builtin.slurp:
+    src: "{{ podman_quadlet_unit_path }}"
+  register: podman_quadlet_ownership_content
+  when: podman_quadlet_ownership_stat.stat.exists
+
+- name: "Rejecting an unmanaged Quadlet unit"
+  ansible.builtin.fail:
+    msg: >-
+      Refusing to overwrite or remove '{{ podman_quadlet_unit_path }}': it does
+      not contain the ansible-iac-role-podman ownership marker. Preserve or
+      migrate the unit explicitly before retrying.
+  when:
+    - podman_quadlet_ownership_stat.stat.exists
+    - "'Managed by ansible-iac-role-podman.' not in (podman_quadlet_ownership_content.content | b64decode)"

@@ -152,3 +152,158 @@
             command: "sleep infinity"
   roles:
     - role: ansible-iac-role-podman
+
+- name: Ensure rootful Quadlet runtime lifecycle
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-lifecycle"
+            command: "sleep infinity"
+            quadlet: true
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking generated Quadlet definition"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-lifecycle.container
+      register: podman_quadlet_definition
+
+    - name: "Verifying rootful Quadlet definition exists"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_definition.stat.exists
+          - podman_quadlet_definition.stat.mode == "0644"
+
+- name: Ensure generated Quadlet service is started
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_started
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-lifecycle"
+            command: "sleep infinity"
+            quadlet: true
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking generated Quadlet service state"
+      ansible.builtin.command:
+        argv: ["systemctl", "is-active", "molecule-quadlet-lifecycle.service"]
+      changed_when: false
+      register: podman_quadlet_service_active
+
+    - name: "Checking generated Quadlet service enablement status"
+      ansible.builtin.command:
+        argv: ["systemctl", "is-enabled", "molecule-quadlet-lifecycle.service"]
+      changed_when: false
+      register: podman_quadlet_service_enabled
+
+    - name: "Verifying generated Quadlet service is active"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_service_active.stdout == "active"
+          - podman_quadlet_service_enabled.stdout in ["enabled", "generated"]
+
+- name: Repeat Quadlet converge
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-lifecycle"
+            command: "sleep infinity"
+            quadlet: true
+  tasks:
+    - name: "Converging existing Quadlet definition again"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+
+- name: Stop and remove rootful Quadlet resource
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_stopped
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-lifecycle"
+            command: "sleep infinity"
+            quadlet: true
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking generated Quadlet unit state after stop"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=ActiveState", "--value", "molecule-quadlet-lifecycle.service"]
+      register: podman_quadlet_service_stopped
+      changed_when: false
+      failed_when: false
+    - name: "Checking generated Quadlet unit result after stop"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=Result", "--value", "molecule-quadlet-lifecycle.service"]
+      register: podman_quadlet_service_result
+      changed_when: false
+      failed_when: false
+    - name: "Checking generated Quadlet unit exit status after stop"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=ExecMainStatus", "--value", "molecule-quadlet-lifecycle.service"]
+      register: podman_quadlet_service_exit_status
+      changed_when: false
+      failed_when: false
+    - name: "Checking Quadlet container is no longer running"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "molecule-quadlet-lifecycle"]
+      register: podman_quadlet_container_stopped
+      changed_when: false
+      failed_when: false
+    - name: "Asserting generated Quadlet service stop contract"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_service_stopped.rc == 0
+          - podman_quadlet_service_result.rc == 0
+          - podman_quadlet_service_exit_status.rc == 0
+          - podman_quadlet_container_stopped.rc != 0 or podman_quadlet_container_stopped.stdout != "running"
+          - podman_quadlet_service_stopped.stdout in ["inactive", "failed"]
+          - podman_quadlet_service_stopped.stdout != "failed" or
+            (podman_quadlet_service_result.stdout == "exit-code" and
+             podman_quadlet_service_exit_status.stdout == "137")
+        fail_msg: >-
+          Expected container stopped/removed and service inactive, or narrowly
+          failed from SIGKILL (exit-code 137); systemd rc={{ podman_quadlet_service_stopped.rc }}/{{ podman_quadlet_service_result.rc }}/{{ podman_quadlet_service_exit_status.rc }},
+          stdout={{ podman_quadlet_service_stopped.stdout | to_json }}/{{ podman_quadlet_service_result.stdout | to_json }}/{{ podman_quadlet_service_exit_status.stdout | to_json }},
+          stderr={{ podman_quadlet_service_stopped.stderr | to_json }}/{{ podman_quadlet_service_result.stderr | to_json }}/{{ podman_quadlet_service_exit_status.stderr | to_json }};
+          Podman rc={{ podman_quadlet_container_stopped.rc }}, stdout={{ podman_quadlet_container_stopped.stdout | to_json }},
+          stderr={{ podman_quadlet_container_stopped.stderr | to_json }}
+    - name: "Removing rootful Quadlet resource"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        state: container_absent
+    - name: "Checking Quadlet definition was removed"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-lifecycle.container
+      register: podman_quadlet_definition_after_removal
+    - name: "Verifying Quadlet definition was removed"
+      ansible.builtin.assert:
+        that:
+          - not podman_quadlet_definition_after_removal.stat.exists
