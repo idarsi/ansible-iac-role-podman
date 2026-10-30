@@ -25,6 +25,7 @@
 ###############################################################################
 
 - name: "Checking container status"
+  when: not (podman_container_record.quadlet | default(false) | bool)
   ansible.builtin.command:
     argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "{{ podman_container_record.parameters.name }}"]
   register: container_active
@@ -35,4 +36,12 @@
   ansible.builtin.command:
     argv: ["podman", "stop", "{{ podman_container_record.parameters.name }}"]
   changed_when: true
-  when: container_active.stdout == "running"
+  when:
+    - not (podman_container_record.quadlet | default(false) | bool)
+    - container_active.stdout == "running"
+
+- name: "Stopping rootful Quadlet service"
+  ansible.builtin.systemd:
+    name: "{{ podman_container_record.parameters.name }}.service"
+    state: stopped
+  when: podman_container_record.quadlet | default(false) | bool

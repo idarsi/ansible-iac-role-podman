@@ -1,0 +1,65 @@
+---
+###############################################################################
+#
+# quadlet_container_present.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+- name: "Validating rootful Quadlet path"
+  ansible.builtin.include_tasks: quadlet_validate_path.yml
+
+- name: "Ensuring rootful Quadlet directory exists"
+  ansible.builtin.file:
+    path: "/etc/containers/systemd"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: "Setting Quadlet unit path"
+  ansible.builtin.set_fact:
+    podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
+
+- name: "Checking for an existing role-managed Quadlet definition"
+  ansible.builtin.stat:
+    path: "{{ podman_quadlet_unit_path }}"
+    follow: false
+  register: podman_quadlet_source
+
+- name: "Verifying ownership before overwriting Quadlet definition"
+  ansible.builtin.include_tasks: quadlet_assert_owned.yml
+  when: podman_quadlet_source.stat.exists
+
+- name: "Checking for an existing container before Quadlet adoption"
+  ansible.builtin.command:
+    argv: ["podman", "inspect", "{{ podman_container_effective.parameters.name }}"]
+  register: podman_quadlet_existing_container
+  changed_when: false
+  failed_when: false
+
+- name: "Rejecting adoption of an existing unmanaged container"
+  ansible.builtin.fail:
+    msg: >-
+      Cannot adopt existing container '{{ podman_container_effective.parameters.name }}'
+      as Quadlet: no role-managed Quadlet definition exists. Remove or migrate it
+      explicitly before enabling Quadlet management.
+  when:
+    - not podman_quadlet_source.stat.exists
+    - podman_quadlet_existing_container.rc == 0
+
+- name: "Rendering rootful Quadlet container unit"
+  ansible.builtin.template:
+    src: "container.container.j2"
+    dest: "{{ podman_quadlet_unit_path }}"
+    owner: root
+    group: root
+    mode: "0644"
+  register: podman_quadlet_unit_file
+
+- name: "Applying generated Quadlet service"
+  ansible.builtin.systemd:
+    name: "{{ podman_container_effective.parameters.name }}.service"
+    daemon_reload: true
+    state: "{{ 'restarted' if podman_quadlet_unit_file.changed else 'started' }}"

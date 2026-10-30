@@ -36,6 +36,7 @@ iac_blueprint:
         parameters:
           name: "example-container"
         command: ["sleep", "infinity"]
+        quadlet: true
 ```
 
 Supported keys under `iac_blueprint.podman`:
@@ -94,6 +95,15 @@ Supported container keys:
 - `parameters`: arguments rendered into `podman create`
 - `environment`: optional environment variables passed with `--env`
 - `command`: optional post-image command string
+- `quadlet`: optional boolean; when `true`, use a rootful Quadlet `.container`
+  unit at `/etc/containers/systemd/<name>.container` instead of direct
+  `podman create`. The generated service is enabled at boot via Quadlet's
+  `[Install] WantedBy=multi-user.target` handling. Supported translated
+  parameters are `name`, `hostname`, `ip`, `publish`, `volume`, `network`,
+  and `user`; other Podman create parameters are rejected for Quadlet records.
+  Quadlet requires the distribution's Podman package to include its systemd
+  generator and requires cgroup v2. Container bootstrap features are not
+  supported with Quadlet.
 - `bootstrap_packages`: optional experimental packages installed inside the
   running container
 - `bootstrap_services`: optional experimental services enabled and started
