@@ -289,9 +289,12 @@
              podman_quadlet_service_exit_status.stdout == "137")
         fail_msg: >-
           Expected container stopped/removed and service inactive, or narrowly
-          failed from SIGKILL (exit-code 137); systemd rc={{ podman_quadlet_service_stopped.rc }}/{{ podman_quadlet_service_result.rc }}/{{ podman_quadlet_service_exit_status.rc }},
-          stdout={{ podman_quadlet_service_stopped.stdout | to_json }}/{{ podman_quadlet_service_result.stdout | to_json }}/{{ podman_quadlet_service_exit_status.stdout | to_json }},
-          stderr={{ podman_quadlet_service_stopped.stderr | to_json }}/{{ podman_quadlet_service_result.stderr | to_json }}/{{ podman_quadlet_service_exit_status.stderr | to_json }};
+          failed from SIGKILL (exit-code 137); systemd rc={{ podman_quadlet_service_stopped.rc }}/
+          {{ podman_quadlet_service_result.rc }}/{{ podman_quadlet_service_exit_status.rc }},
+          stdout={{ podman_quadlet_service_stopped.stdout | to_json }}/
+          {{ podman_quadlet_service_result.stdout | to_json }}/{{ podman_quadlet_service_exit_status.stdout | to_json }},
+          stderr={{ podman_quadlet_service_stopped.stderr | to_json }}/
+          {{ podman_quadlet_service_result.stderr | to_json }}/{{ podman_quadlet_service_exit_status.stderr | to_json }};
           Podman rc={{ podman_quadlet_container_stopped.rc }}, stdout={{ podman_quadlet_container_stopped.stdout | to_json }},
           stderr={{ podman_quadlet_container_stopped.stderr | to_json }}
     - name: "Removing rootful Quadlet resource"
