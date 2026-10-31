@@ -59,8 +59,8 @@ container explicitly through `parameters`. The practical minimum is:
 
 See:
 
-- [inventory-systemd-sshd.yml](inventory-systemd-sshd.yml)
-- [inventory-ssh-controller-keys.yml](inventory-ssh-controller-keys.yml)
+- [inventory-systemd-sshd.yml](examples/inventory-systemd-sshd.yml)
+- [inventory-ssh-controller-keys.yml](examples/inventory-ssh-controller-keys.yml)
 
 ## Root SSH access with generated host keys
 
