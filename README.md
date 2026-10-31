@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
 > **RC Readiness: 80%**<br>
-> Assessed at `c0fdc7d`; documentation examples are now grouped under `docs/examples/` and linked from the README and references. This layout refinement changes no rubric evidence or score from the prior 80% assessment: Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
+> Assessed at `c17253c` (HEAD) using the same rubric and prior criterion scores: 80.5/100, rounded down to 80%. Documentation and Release Hygiene remains 10/10; the blueprint field-table documentation does not change the score. Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
