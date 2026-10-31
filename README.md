@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
 > **RC Readiness: 80%**<br>
-> Assessed at `b9376c5`; runtime coverage is Rocky Linux 9/10 only, RHEL 9/10 remains untested, and representative idempotence, boot activation, and several lifecycle guardrails lack automated runtime evidence. Required CI checks are configured; no result at this assessed commit was available.
+> Assessed at `cd3657e`; Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
@@ -124,58 +124,15 @@ Use case examples:
 
 Reference and operations:
 
-- [docs/inventory-structure.md](docs/inventory-structure.md)
+- [docs/blueprint.md](docs/blueprint.md) — authoritative blueprint schema and state reference
 - [docs/playbook-states.yml](docs/playbook-states.yml)
 - [docs/playbook-proxy-ssh-postgresql.yml](docs/playbook-proxy-ssh-postgresql.yml)
 - [docs/experimental-features.md](docs/experimental-features.md)
 - [TESTING.md](TESTING.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Inventory model
-===============
-
-The role reads Podman configuration from `iac_blueprint.podman`.
-
-Supported top-level keys:
-
-- `configuration`
-- `directories`
-- `files`
-- `binds`
-- `cron`
-- `containers`
-
-Shared filesystem helpers
-=========================
-
-This role supports `directories:`, `files:`, `binds:`, and `cron:` through the shared
-task library under `tasks/shared` (pin above). Shared file tasks pass through
-the requested mode and do not set a secret-safe default mode or suppress diffs.
-Set restrictive `mode` values (for example `"0600"`) for sensitive content;
-do not put credentials in inline content unless the task output/diff exposure
-is acceptable.
-
-For the exact `binds:` record structure and examples, see:
-
-- `tasks/shared/README.md`
-
-Supported container keys:
-
-- `preset`
-- `image`
-- `parameters`
-- `environment`
-- `command`
-- `bootstrap_packages`
-- `bootstrap_services`
-- `bootstrap_ssh_root_access`
-- `bootstrap_ssh_authorized_keys_contents`
-- `bootstrap_ssh_authorized_keys_files`
-- `bootstrap_ssh_private_key_path`
-- `bootstrap_ssh_known_hosts_path`
-
-Other top-level container record keys are not a supported extension point and
-are currently ignored. Put Podman create options under `parameters`.
+The [authoritative blueprint reference](docs/blueprint.md) documents supported
+keys, container options, states, and shared resource details.
 
 Container presets
 =================

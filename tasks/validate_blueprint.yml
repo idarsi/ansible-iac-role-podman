@@ -35,7 +35,7 @@
       - iac_blueprint.podman.containers is not defined or iac_blueprint.podman.containers is sequence and iac_blueprint.podman.containers is not string
     fail_msg: >-
       Podman blueprint has an unsupported shape or key, or requested state is
-      invalid. See docs/inventory-structure.md for accepted fields and states.
+      invalid. See docs/blueprint.md for accepted fields and states.
 
 - name: "Checking Podman container record structures"
   ansible.builtin.assert:

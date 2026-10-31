@@ -270,7 +270,7 @@
             that:
               - >-
                 "Podman blueprint has an unsupported shape or key, or requested state is invalid. See
-                docs/inventory-structure.md for accepted fields and states." in ansible_failed_result.msg
+                docs/blueprint.md for accepted fields and states." in ansible_failed_result.msg
 
     - name: Empty image must fail during validate with the record error
       block:
