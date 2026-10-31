@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 80%**<br>
-> Assessed at `c17253c` (HEAD) using the same rubric and prior criterion scores: 80.5/100, rounded down to 80%. Documentation and Release Hygiene remains 10/10; the blueprint field-table documentation does not change the score. Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
+> **RC Readiness: 81%**<br>
+> Assessed at `96d0fb48948ae4c800cd0219c19690155a15194e`. Using the same rubric and prior criterion scores, the total is 81.0/100 (rounded down to 81%): CI enforcement increases by 0.5 point because GitHub Actions run [41196823647](https://github.com/idarsi/ansible-iac-role-podman/actions/runs/41196823647) passed all jobs at this exact head SHA. No unrelated criterion scores changed. Maturity remains Beta: RHEL runtime coverage, representative idempotence, boot-time activation, and lifecycle guardrails still lack sufficient evidence.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
