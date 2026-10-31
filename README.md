@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
 > **RC Readiness: 80%**<br>
-> Assessed at `cd3657e`; Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
+> Assessed at `c0fdc7d`; documentation examples are now grouped under `docs/examples/` and linked from the README and references. This layout refinement changes no rubric evidence or score from the prior 80% assessment: Rocky Linux 9/10 have runtime coverage, while RHEL 9/10, representative idempotence, boot-time activation, and several lifecycle guardrails lack runtime evidence. Required CI checks are configured; no result at this ref was available.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
@@ -113,20 +113,20 @@ Documentation map
 
 Use case examples:
 
-- [docs/inventory-minimal.yml](docs/inventory-minimal.yml)
-- [docs/inventory-host-config.yml](docs/inventory-host-config.yml)
-- [docs/inventory-container-basic.yml](docs/inventory-container-basic.yml)
-- [docs/inventory-preset-rhel9.yml](docs/inventory-preset-rhel9.yml)
-- [docs/inventory-systemd-sshd.yml](docs/inventory-systemd-sshd.yml)
-- [docs/inventory-ssh-controller-keys.yml](docs/inventory-ssh-controller-keys.yml)
-- [docs/inventory-proxy-ssh-postgresql.yml](docs/inventory-proxy-ssh-postgresql.yml)
-- [docs/inventory-multi-container.yml](docs/inventory-multi-container.yml)
+- [minimal](docs/examples/inventory-minimal.yml)
+- [host configuration](docs/examples/inventory-host-config.yml)
+- [basic container](docs/examples/inventory-container-basic.yml)
+- [preset](docs/examples/inventory-preset-rhel9.yml)
+- [systemd/SSH](docs/examples/inventory-systemd-sshd.yml)
+- [controller SSH keys](docs/examples/inventory-ssh-controller-keys.yml)
+- [proxy/SSH/PostgreSQL](docs/examples/inventory-proxy-ssh-postgresql.yml)
+- [multiple containers](docs/examples/inventory-multi-container.yml)
 
 Reference and operations:
 
 - [docs/blueprint.md](docs/blueprint.md) — authoritative blueprint schema and state reference
-- [docs/playbook-states.yml](docs/playbook-states.yml)
-- [docs/playbook-proxy-ssh-postgresql.yml](docs/playbook-proxy-ssh-postgresql.yml)
+- [state playbook](docs/examples/playbook-states.yml)
+- [proxy/SSH/PostgreSQL playbook](docs/examples/playbook-proxy-ssh-postgresql.yml)
 - [docs/experimental-features.md](docs/experimental-features.md)
 - [TESTING.md](TESTING.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)

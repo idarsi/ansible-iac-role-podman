@@ -89,8 +89,10 @@ state or mutate the host.
 Declared support: Rocky Linux 9/10 and Red Hat Enterprise Linux 9/10. Current
 Molecule runtime coverage is Rocky Linux 9/10 only.
 
-Examples: [minimal](inventory-minimal.yml), [host configuration](inventory-host-config.yml),
-[basic container](inventory-container-basic.yml), [multiple containers](inventory-multi-container.yml),
-[preset](inventory-preset-rhel9.yml), [systemd/SSH](inventory-systemd-sshd.yml),
-[controller SSH keys](inventory-ssh-controller-keys.yml), and
-[proxy/SSH/PostgreSQL](inventory-proxy-ssh-postgresql.yml).
+Examples: [minimal](examples/inventory-minimal.yml), [host configuration](examples/inventory-host-config.yml),
+[basic container](examples/inventory-container-basic.yml), [multiple containers](examples/inventory-multi-container.yml),
+[preset](examples/inventory-preset-rhel9.yml), [systemd/SSH](examples/inventory-systemd-sshd.yml),
+[controller SSH keys](examples/inventory-ssh-controller-keys.yml), and
+[proxy/SSH/PostgreSQL](examples/inventory-proxy-ssh-postgresql.yml). Runnable playbook
+examples are also available: [states](examples/playbook-states.yml) and
+[proxy/SSH/PostgreSQL](examples/playbook-proxy-ssh-postgresql.yml).

@@ -2,7 +2,7 @@
 
 ## Documentation and inventory changes
 
-Keep `README.md`, the use-case examples under `docs/`, and the reference
+Keep `README.md`, the use-case examples under `docs/examples/`, and the reference
 documents under `docs/` aligned with the role implementation.
 
 Every new or changed `iac_blueprint.podman` key must be handled in all
@@ -11,7 +11,7 @@ relevant documentation locations:
 - Update the matching inventory example when the inventory shape is
   user-visible.
 - Update `docs/blueprint.md` for changes to the inventory model.
-- Update `docs/playbook-states.yml` when the supported state surface changes.
+- Update `docs/examples/playbook-states.yml` when the supported state surface changes.
 - Update `README.md` when supported states, inventory structure, or required
   behavior changes.
 
