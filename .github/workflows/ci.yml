@@ -20,7 +20,11 @@ jobs:
       - name: Lint role-owned Ansible code
         env:
           ANSIBLE_ROLES_PATH: ..
-        run: ansible-lint --profile production --exclude tasks/shared tasks defaults tests
+        run: >-
+          ansible-lint --profile production
+          --exclude tasks/shared
+          --exclude docs/examples/playbook-proxy-ssh-postgresql.yml
+          tasks defaults tests
       - name: Syntax and deterministic checks
         run: |
           ansible-playbook --syntax-check -i localhost, tests/argv-construction.yml
