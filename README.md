@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 81%**<br>
-> Assessed at `96d0fb48948ae4c800cd0219c19690155a15194e`. Using the same rubric and prior criterion scores, the total is 81.0/100 (rounded down to 81%): CI enforcement increases by 0.5 point because GitHub Actions run [41196823647](https://github.com/idarsi/ansible-iac-role-podman/actions/runs/41196823647) passed all jobs at this exact head SHA. No unrelated criterion scores changed. Maturity remains Beta: RHEL runtime coverage, representative idempotence, boot-time activation, and lifecycle guardrails still lack sufficient evidence.
+> **RC Readiness: 82%**<br>
+> Assessed at `2157f52`. Starting from the 81.0/100 assessment documented for the main-line predecessor, the merged relative-`src` and file-content-type validation plus positive/negative validation cases add 1 point for preflight validation evidence (82.0/100, rounded down to 82%). GitHub Actions run [41196823647](https://github.com/idarsi/ansible-iac-role-podman/actions/runs/41196823647) passed all jobs at the prior assessed head, but no result for this merge commit was available during assessment. The Quadlet lifecycle scenario adds evidence for unit rendering, service start/stop, removal, and systemd enablement, but does not establish boot-time activation or aggregate idempotence. Maturity remains Beta: RHEL runtime coverage, representative idempotence, boot-time activation, and some lifecycle guardrails still lack sufficient evidence.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================

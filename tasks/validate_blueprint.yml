@@ -212,6 +212,7 @@
       - podman_record is mapping
       - podman_record.path is defined and podman_record.path is string and podman_record.path | length > 0
       - (podman_record.content is defined) != (podman_record.src is defined)
+      - podman_record.content is not defined or podman_record.content is string
       - podman_record.src is not defined or podman_record.src is string and podman_record.src is match('^/')
       - podman_record.mode is not defined or podman_record.mode is string
       - podman_record.selinux is not defined or podman_record.selinux is mapping
