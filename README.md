@@ -1,5 +1,5 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 78%**
+> **RC Readiness: 79%**
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================

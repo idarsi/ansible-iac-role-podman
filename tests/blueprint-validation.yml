@@ -115,7 +115,8 @@
           ansible.builtin.assert:
             that:
               - >-
-                "Podman blueprint has an unsupported shape or key, or requested state is invalid. See docs/inventory-structure.md for accepted fields and states."
+                "Podman blueprint has an unsupported shape or key, or requested state is invalid. See
+                docs/inventory-structure.md for accepted fields and states."
                 in ansible_failed_result.msg
 
     - name: Empty image must fail during validate with the record error
@@ -204,3 +205,33 @@
               - >-
                 ansible_failed_result.results[0].msg ==
                 "Invalid container record: expected a mapping with supported fields, valid types, and safe Podman create parameters (including a valid name)."
+
+    - name: String file content must pass validation
+      ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+      vars:
+        iac_blueprint:
+          podman:
+            files:
+              - path: /tmp/blueprint-validation
+                content: "valid string content"
+
+    - name: Non-string file content must fail validation
+      block:
+        - name: Validate numeric file content
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                files:
+                  - path: /tmp/blueprint-validation
+                    content: 42
+        - name: Fail if non-string file content was accepted
+          ansible.builtin.fail:
+            msg: "Non-string file content unexpectedly passed validation"
+      rescue:
+        - name: Confirm non-string file content was rejected
+          ansible.builtin.assert:
+            that:
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Each file record requires a path and exactly one of content or absolute src."
