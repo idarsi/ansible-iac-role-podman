@@ -19,7 +19,7 @@ gate; run them separately with the approved Idarsi test environment.
 Scenario                         | Platform/image                         | Main coverage
 ---------------------------------|----------------------------------------|------------------------------
 `default`                        | Rocky Linux 9 and 10 init              | Podman installation, network configuration, directories, files, cron, and a running container
-`lifecycle`                      | Rocky Linux 10 init                    | `container_present`, `container_started`, `container_stopped`, and `container_absent`
+`lifecycle`                      | Rocky Linux 10 init                    | Classic container lifecycle plus rootful Quadlet unit generation, generated systemd service start and enablement status, repeated converge, stop, and removal
 `experimental`                   | Rocky Linux 10 init                    | Package and service bootstrap, generated root SSH access, controller and inline authorized keys, and published SSH access
 `experimental-ip`                | Rocky Linux 10 init                    | Generated SSH access and login through the container IP address
 `experimental-host-user`        | Rocky Linux 10 init                    | Generated SSH artifacts owned by a non-root host user and SSH login through that user
@@ -46,7 +46,17 @@ scenario files intentionally retain those schema-compatible forms.
 - `molecule/lifecycle` validates the container lifecycle states in sequence:
   create, start, stop, start, and remove. The final removal deliberately
   starts the container again so the role's safe stop-before-remove behavior is
-  exercised.
+  exercised. It also exercises rootful Quadlet `.container` generation,
+  generated systemd service activation and enablement status, a repeated
+  converge, stop, and unit removal. Stop asserts the container is not running
+  (or is removed) and accepts a clean inactive unit or the narrowly expected
+  `failed` / `exit-code` / `137` result when Podman had to SIGKILL after its
+  termination timeout. It does not suppress other failures. The source unit
+  and enablement remain until `container_absent` removes them. The scenario checks systemd enablement
+  status only; it does not reboot the host or verify boot-time activation.
+  Repeating converge is not used as an idempotence assertion because the
+  aggregate result of `include_role` does not reliably report child-task
+  changes.
 - The lifecycle fixture uses a simple scalar command and the role's argv
   builder also accepts list-valued Podman parameters; static YAML checks cover
   the task structure, while full argv/runtime coverage remains Molecule-only.
@@ -72,6 +82,12 @@ scenario files intentionally retain those schema-compatible forms.
 - `molecule/experimental-rhel9-preset` validates the built-in `rhel9`
   container preset together with systemd, SSH package/service bootstrap, and
   generated SSH access.
+- Quadlet schema validation rejects bootstrap options and non-boolean
+  `quadlet` values in the controller-side blueprint fixture. Rootful Quadlet
+  runtime behavior is covered by `molecule/lifecycle`, including generated
+  unit contents, service state, enablement status, stop, and removal. The
+  scenario does not reboot the host; transitions between classic and Quadlet
+  management and unmanaged-definition preservation remain runtime-uncovered.
 
 ## Running tests
 

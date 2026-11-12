@@ -54,8 +54,47 @@
 # ENSURING CONTAINER IS PRESENT
 ###############################################################################
 
+- name: "Removing role-managed Quadlet definition when switching to direct management"
+  when: not (podman_container_effective.quadlet | default(false) | bool)
+  block:
+    - name: "Validating rootful Quadlet path before removal"
+      ansible.builtin.include_tasks: quadlet_validate_path.yml
+
+    - name: "Checking for role-managed Quadlet definition"
+      ansible.builtin.stat:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
+        follow: false
+      register: podman_quadlet_source
+
+    - name: "Verifying ownership before removing Quadlet definition"
+      ansible.builtin.include_tasks: quadlet_assert_owned.yml
+      vars:
+        podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
+      when: podman_quadlet_source.stat.exists
+
+    - name: "Stopping generated Quadlet service before switching management mode"
+      ansible.builtin.systemd:
+        name: "{{ podman_container_effective.parameters.name }}.service"
+        state: stopped
+      when: podman_quadlet_source.stat.exists
+
+    - name: "Removing role-managed Quadlet definition"
+      ansible.builtin.file:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
+        state: absent
+      when: podman_quadlet_source.stat.exists
+
+    - name: "Reloading systemd after Quadlet definition removal"
+      ansible.builtin.systemd:
+        daemon_reload: true
+      when: podman_quadlet_source.stat.exists
 - name: "Building safe Podman create argv"
   ansible.builtin.include_tasks: container_create_argv.yml
+  when: not (podman_container_effective.quadlet | default(false) | bool)
+
+- name: "Managing rootful Quadlet container unit"
+  ansible.builtin.include_tasks: quadlet_container_present.yml
+  when: podman_container_effective.quadlet | default(false) | bool
 
 - name: "Checking container status"
   ansible.builtin.command:
@@ -68,6 +107,7 @@
   register: container_active
   changed_when: false
   failed_when: false
+  when: not (podman_container_effective.quadlet | default(false) | bool)
 
 - name: "Ensuring container is present"
   ansible.builtin.command:
@@ -77,4 +117,6 @@
     http_proxy: "{{ http_proxy | default(omit) }}"
     https_proxy: "{{ https_proxy | default(omit) }}"
     no_proxy: "{{ no_proxy | default(omit) }}"
-  when: container_active.rc != 0
+  when:
+    - not (podman_container_effective.quadlet | default(false) | bool)
+    - container_active.rc != 0

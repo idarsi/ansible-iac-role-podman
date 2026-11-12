@@ -1,0 +1,38 @@
+---
+###############################################################################
+#
+# quadlet_validate_path.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+- name: "Checking rootful Quadlet directory configuration"
+  ansible.builtin.assert:
+    that:
+      - podman_quadlet_directory == "/etc/containers/systemd"
+    fail_msg: "Rootful Quadlet units must use /etc/containers/systemd"
+
+- name: "Checking /etc/containers for a symbolic link"
+  ansible.builtin.stat:
+    path: "/etc/containers"
+    follow: false
+  register: podman_quadlet_parent
+
+- name: "Rejecting symbolic link in /etc/containers"
+  ansible.builtin.assert:
+    that:
+      - not (podman_quadlet_parent.stat.islnk | default(false))
+    fail_msg: "/etc/containers must not be a symbolic link for rootful Quadlet management"
+
+- name: "Checking rootful Quadlet directory for a symbolic link"
+  ansible.builtin.stat:
+    path: "/etc/containers/systemd"
+    follow: false
+  register: podman_quadlet_directory_stat
+
+- name: "Rejecting symbolic link in rootful Quadlet directory"
+  ansible.builtin.assert:
+    that:
+      - not (podman_quadlet_directory_stat.stat.islnk | default(false))
+    fail_msg: "/etc/containers/systemd must not be a symbolic link for rootful Quadlet management"

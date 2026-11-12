@@ -1,5 +1,6 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 79%**
+> **RC Readiness: 81%**<br>
+> Assessed at `96d0fb48948ae4c800cd0219c19690155a15194e`. Using the same rubric and prior criterion scores, the total is 81.0/100 (rounded down to 81%): CI enforcement increases by 0.5 point because GitHub Actions run [41196823647](https://github.com/idarsi/ansible-iac-role-podman/actions/runs/41196823647) passed all jobs at this exact head SHA. No unrelated criterion scores changed. Maturity remains Beta: RHEL runtime coverage, representative idempotence, boot-time activation, and lifecycle guardrails still lack sufficient evidence.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
@@ -51,7 +52,7 @@ Repository checkout
 ===================
 
 This role includes the shared task library as a Git submodule under
-`tasks/shared`, pinned at `d70d58eeb31390d36975fb8d9c11dfab88fadc95`.
+`tasks/shared`, pinned at `b1902c1d846c9de56836b2711b4e59e8847519c6`.
 
 Clone the repository with submodules:
 
@@ -112,69 +113,26 @@ Documentation map
 
 Use case examples:
 
-- [docs/inventory-minimal.yml](docs/inventory-minimal.yml)
-- [docs/inventory-host-config.yml](docs/inventory-host-config.yml)
-- [docs/inventory-container-basic.yml](docs/inventory-container-basic.yml)
-- [docs/inventory-preset-rhel9.yml](docs/inventory-preset-rhel9.yml)
-- [docs/inventory-systemd-sshd.yml](docs/inventory-systemd-sshd.yml)
-- [docs/inventory-ssh-controller-keys.yml](docs/inventory-ssh-controller-keys.yml)
-- [docs/inventory-proxy-ssh-postgresql.yml](docs/inventory-proxy-ssh-postgresql.yml)
-- [docs/inventory-multi-container.yml](docs/inventory-multi-container.yml)
+- [minimal](docs/examples/inventory-minimal.yml)
+- [host configuration](docs/examples/inventory-host-config.yml)
+- [basic container](docs/examples/inventory-container-basic.yml)
+- [preset](docs/examples/inventory-preset-rhel9.yml)
+- [systemd/SSH](docs/examples/inventory-systemd-sshd.yml)
+- [controller SSH keys](docs/examples/inventory-ssh-controller-keys.yml)
+- [proxy/SSH/PostgreSQL](docs/examples/inventory-proxy-ssh-postgresql.yml)
+- [multiple containers](docs/examples/inventory-multi-container.yml)
 
 Reference and operations:
 
-- [docs/inventory-structure.md](docs/inventory-structure.md)
-- [docs/playbook-states.yml](docs/playbook-states.yml)
-- [docs/playbook-proxy-ssh-postgresql.yml](docs/playbook-proxy-ssh-postgresql.yml)
+- [docs/blueprint.md](docs/blueprint.md) — authoritative blueprint schema and state reference
+- [state playbook](docs/examples/playbook-states.yml)
+- [proxy/SSH/PostgreSQL playbook](docs/examples/playbook-proxy-ssh-postgresql.yml)
 - [docs/experimental-features.md](docs/experimental-features.md)
 - [TESTING.md](TESTING.md)
 - [CONTRIBUTING.md](CONTRIBUTING.md)
 
-Inventory model
-===============
-
-The role reads Podman configuration from `iac_blueprint.podman`.
-
-Supported top-level keys:
-
-- `configuration`
-- `directories`
-- `files`
-- `binds`
-- `cron`
-- `containers`
-
-Shared filesystem helpers
-=========================
-
-This role supports `directories:`, `files:`, `binds:`, and `cron:` through the shared
-task library under `tasks/shared` (pin above). Shared file tasks pass through
-the requested mode and do not set a secret-safe default mode or suppress diffs.
-Set restrictive `mode` values (for example `"0600"`) for sensitive content;
-do not put credentials in inline content unless the task output/diff exposure
-is acceptable.
-
-For the exact `binds:` record structure and examples, see:
-
-- `tasks/shared/README.md`
-
-Supported container keys:
-
-- `preset`
-- `image`
-- `parameters`
-- `environment`
-- `command`
-- `bootstrap_packages`
-- `bootstrap_services`
-- `bootstrap_ssh_root_access`
-- `bootstrap_ssh_authorized_keys_contents`
-- `bootstrap_ssh_authorized_keys_files`
-- `bootstrap_ssh_private_key_path`
-- `bootstrap_ssh_known_hosts_path`
-
-Other top-level container record keys are not a supported extension point and
-are currently ignored. Put Podman create options under `parameters`.
+The [authoritative blueprint reference](docs/blueprint.md) documents supported
+keys, container options, states, and shared resource details.
 
 Container presets
 =================
@@ -187,6 +145,28 @@ container definition on top of it.
 Default built-in presets:
 
 - `rhel9` -> `registry.access.redhat.com/ubi9-init`
+
+Container records may opt into rootful Podman Quadlet with `quadlet: true`.
+The role renders `/etc/containers/systemd/<name>.container` and manages its
+generated `<name>.service`; Quadlet's `[Install] WantedBy=multi-user.target`
+enables boot startup (these generated services are not enabled with
+`systemctl enable`); a systemd daemon reload runs the generator and applies the
+source unit's install relationship. `container_stopped` stops the workload but
+retains the source definition and its boot enablement; the generated service may
+show `ActiveState=failed` with `Result=exit-code` and status 137 if Podman had to
+SIGKILL it after the stop timeout. This does not hide systemd failures; removal
+of the source unit and enablement occurs only with `container_absent`. Quadlet depends on the Podman systemd generator shipped by
+the target's Podman package and cgroup v2. Only the documented translated
+container options are supported; bootstrap features are incompatible with this
+mode. Switching an existing role-managed name from Quadlet to direct management
+removes its role-owned source unit and reloads systemd. Switching to Quadlet
+fails safely if a container already exists without a role-owned source unit;
+the role cannot establish ownership of containers created outside this role,
+so operators must remove or migrate those explicitly. The lifecycle scenario
+covers rootful Quadlet unit generation, service start/stop, removal, and
+systemd enablement status. It checks enablement status only; it does not reboot
+the host or verify boot-time activation. The scenario also repeats convergence
+but does not claim idempotence based on the aggregate `include_role` result.
 
 Requirements
 ============

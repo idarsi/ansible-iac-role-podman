@@ -9,6 +9,10 @@
 # - This example uses sshpass in ProxyCommand because the jump host is
 #   password-authenticated.
 # - For long-term use, controller-to-host SSH keys are a cleaner approach.
+# - Provision and verify the known_hosts file at the configured path before
+#   running this example; do not disable host-key checking.
+# - Supply vault_postgresql_app_password securely (for example, through Ansible
+#   Vault); do not commit its plaintext value.
 
 podman_hosts:
   hosts:
@@ -46,7 +50,7 @@ managed_containers:
         -o ProxyCommand="sshpass -f {{ playbook_dir }}/files/podman-host.password
         ssh -W %h:%p
         -o StrictHostKeyChecking=yes
-        -o UserKnownHostsFile=/home/automation/.ssh/known_hosts
+        -o UserKnownHostsFile={{ playbook_dir }}/files/known_hosts
         automation@podman-host-1.example.org"
   vars:
     iac_blueprint:
@@ -56,7 +60,7 @@ managed_containers:
             - name: main
               roles:
                 - name: app
-                  password: changeme
+                  password: "{{ vault_postgresql_app_password }}"
               databases:
                 - name: appdb
                   owner: app
