@@ -158,7 +158,15 @@
         (podman_record.environment | dict2items
         | rejectattr('key', 'match', '^[A-Za-z_][A-Za-z0-9_]*$')
         | list | length) == 0
-    fail_msg: "Container environment keys must be valid environment-variable identifiers and values must be scalar strings, numbers, booleans, or null."
+      - >-
+        podman_record.environment is not defined or
+        (podman_record.environment | dict2items | map(attribute='key') | map('string')
+        | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0
+      - >-
+        podman_record.environment is not defined or
+        (podman_record.environment | dict2items | map(attribute='value') | map('string')
+        | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0
+    fail_msg: "Container environment keys must be valid identifiers and keys/values must be free of control characters; values must be scalar strings, numbers, booleans, or null."
   loop: "{{ iac_blueprint.podman.containers | default([]) }}"
   loop_control:
     loop_var: podman_record
@@ -175,14 +183,6 @@
         (([podman_record.command] if podman_record.command is string else podman_record.command)
         | map('string') | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
       - >-
-        (podman_record.environment is not defined or
-        (podman_record.environment | dict2items
-        | selectattr('key', 'search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
-      - >-
-        (podman_record.environment is not defined or
-        (podman_record.environment | dict2items | map(attribute='value') | map('string')
-        | select('search', '[\\x00-\\x1f\\x7f]') | list | length) == 0)
-      - >-
         ((podman_container_presets.get(podman_record.preset | default(''), {}).parameters | default({})
         | combine(podman_record.parameters | default({}), recursive=True)
         | dict2items | map(attribute='value') | flatten
@@ -191,9 +191,7 @@
   loop: "{{ iac_blueprint.podman.containers | default([]) }}"
   loop_control:
     loop_var: podman_record
-  when: >-
-    podman_record is mapping and
-    (podman_record.quadlet | default(false) | bool)
+  when: podman_record is mapping
 
 - name: "Checking Podman directory records"
   ansible.builtin.assert:

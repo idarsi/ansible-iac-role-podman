@@ -1,0 +1,13 @@
+---
+###############################################################################
+#
+# container_environment_reset.yml
+#
+# @author Arsi Atomi
+#
+###############################################################################
+
+- name: "Resetting per-container Podman environment file state"
+  ansible.builtin.set_fact:
+    podman_container_environment_file: null
+    podman_environment_directory: null

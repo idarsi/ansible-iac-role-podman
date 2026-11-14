@@ -1,6 +1,6 @@
 > **Maturity State: Beta**<br>
-> **RC Readiness: 82%**<br>
-> Assessed at `2157f52`. Starting from the 81.0/100 assessment documented for the main-line predecessor, the merged relative-`src` and file-content-type validation plus positive/negative validation cases add 1 point for preflight validation evidence (82.0/100, rounded down to 82%). GitHub Actions run [41196823647](https://github.com/idarsi/ansible-iac-role-podman/actions/runs/41196823647) passed all jobs at the prior assessed head, but no result for this merge commit was available during assessment. The Quadlet lifecycle scenario adds evidence for unit rendering, service start/stop, removal, and systemd enablement, but does not establish boot-time activation or aggregate idempotence. Maturity remains Beta: RHEL runtime coverage, representative idempotence, boot-time activation, and some lifecycle guardrails still lack sufficient evidence.
+> **RC Readiness: 84%**<br>
+> Assessed on `update/molecule-secret-runtime-coverage` at working-tree changes over `7218b9c` (84/100; Beta). The passing lifecycle scenario now verifies secret-safe direct-container creation and protected Quadlet EnvironmentFile permissions, runtime value updates, repeat convergence, stale-file cleanup, and mode-transition cleanup; passing static fixtures cover environment serialization and blueprint validation. This adds evidence for secure behavior and observable functional verification. Remaining gaps include representative automated idempotence assertions, RHEL runtime coverage, boot-time activation, and some lifecycle guardrails; runtime coverage is Rocky Linux only. The assessment is of the current working tree, not the unchanged commit alone.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================
@@ -159,7 +159,9 @@ of the source unit and enablement occurs only with `container_absent`. Quadlet d
 the target's Podman package and cgroup v2. Only the documented translated
 container options are supported; bootstrap features are incompatible with this
 mode. Switching an existing role-managed name from Quadlet to direct management
-removes its role-owned source unit and reloads systemd. Switching to Quadlet
+removes its role-owned source unit and paired role-owned `.env` file after
+verifying ownership; unmarked or symlink environment files cause the transition
+to fail safely. Switching to Quadlet
 fails safely if a container already exists without a role-owned source unit;
 the role cannot establish ownership of containers created outside this role,
 so operators must remove or migrate those explicitly. The lifecycle scenario

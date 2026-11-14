@@ -19,7 +19,7 @@ gate; run them separately with the approved Idarsi test environment.
 Scenario                         | Platform/image                         | Main coverage
 ---------------------------------|----------------------------------------|------------------------------
 `default`                        | Rocky Linux 9 and 10 init              | Podman installation, network configuration, directories, files, cron, and a running container
-`lifecycle`                      | Rocky Linux 10 init                    | Classic container lifecycle plus rootful Quadlet unit generation, generated systemd service start and enablement status, repeated converge, stop, and removal
+`lifecycle`                      | Rocky Linux 10 init                    | Classic container lifecycle, protected direct/Quadlet environment handling and update/cleanup, plus rootful Quadlet service lifecycle
 `experimental`                   | Rocky Linux 10 init                    | Package and service bootstrap, generated root SSH access, controller and inline authorized keys, and published SSH access
 `experimental-ip`                | Rocky Linux 10 init                    | Generated SSH access and login through the container IP address
 `experimental-host-user`        | Rocky Linux 10 init                    | Generated SSH artifacts owned by a non-root host user and SSH login through that user
@@ -57,6 +57,14 @@ scenario files intentionally retain those schema-compatible forms.
   Repeating converge is not used as an idempotence assertion because the
   aggregate result of `include_role` does not reliably report child-task
   changes.
+- The lifecycle scenario uses only synthetic environment values to verify that
+  direct-mode Podman argv excludes the value while the created container keeps
+  the exact value, including spaces, quotes, backslashes, `$`, and `%`. Direct
+  mode does not reconcile environment changes on an already existing
+  container; the test documents this creation-time behavior. Quadlet coverage
+  verifies the protected `.env` mode/ownership, runtime value update, repeat
+  convergence, stale-file removal, and cleanup when switching to direct mode.
+  Secret-bearing command results and assertions use `no_log`.
 - The lifecycle fixture uses a simple scalar command and the role's argv
   builder also accepts list-valued Podman parameters; static YAML checks cover
   the task structure, while full argv/runtime coverage remains Molecule-only.
@@ -91,18 +99,22 @@ scenario files intentionally retain those schema-compatible forms.
 
 ## Running tests
 
-The argv fixture exercises argv construction; the blueprint fixture exercises
+The argv and EnvironmentFile fixtures exercise controller-side serialization;
+the blueprint fixture exercises
 the public `validate` state through `tasks/main.yml`, which bypasses runtime
 checks and state mutation. Both run controller-side without Podman:
 
 ```bash
 ansible-playbook tests/argv-construction.yml
+ansible-playbook tests/environment-file-format.yml
 ansible-playbook tests/blueprint-validation.yml
 ```
 
 The argv fixture imports `container_create_argv.yml` and
 `container_bootstrap_package_argv.yml` and covers scalar, repeated list,
-boolean, null, environment, and bootstrap package argv values. Blueprint tests
+boolean, null, inherited environment-key argv values, and bootstrap package argv values. The EnvironmentFile
+fixture checks spaces, quotes, backslashes, dollar signs, and percent signs.
+Blueprint tests
 cover preset-derived lifecycle-name acceptance without specifying
 `parameters.name`, plus exact failure messages for malformed container
 parameters and unknown blueprint keys. This does not prove every task's

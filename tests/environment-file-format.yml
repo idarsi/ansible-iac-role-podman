@@ -1,0 +1,34 @@
+---
+- name: "Validate Podman environment file raw value preservation"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  vars:
+    podman_container_effective:
+      environment:
+        SPACES: "two words"
+        QUOTES: 'say "hello"'
+        BACKSLASH: 'path\\segment'
+        DOLLAR: "$HOME"
+        PERCENT: "100%"
+  tasks:
+    - name: "Render the Podman direct-mode environment template"
+      ansible.builtin.set_fact:
+        podman_environment_file_fixture: "{{ lookup('template', '../templates/podman.env.j2') }}"
+
+    - name: "Render the Quadlet Podman environment template"
+      ansible.builtin.set_fact:
+        quadlet_environment_file_fixture: "{{ lookup('template', '../templates/container.env.j2') }}"
+
+    - name: "Assert Podman env-file values remain literal after the first equals sign"
+      ansible.builtin.assert:
+        that:
+          - "'SPACES=two words' in podman_environment_file_fixture"
+          - "'QUOTES=say \"hello\"' in podman_environment_file_fixture"
+          - "'BACKSLASH=' ~ podman_container_effective.environment.BACKSLASH in podman_environment_file_fixture"
+          - "'DOLLAR=$HOME' in podman_environment_file_fixture"
+          - "'PERCENT=100%' in podman_environment_file_fixture"
+          - "'QUOTES=say \"hello\"' in quadlet_environment_file_fixture"
+          - "'BACKSLASH=' ~ podman_container_effective.environment.BACKSLASH in quadlet_environment_file_fixture"
+          - "'DOLLAR=$HOME' in quadlet_environment_file_fixture"
+          - "'PERCENT=100%' in quadlet_environment_file_fixture"

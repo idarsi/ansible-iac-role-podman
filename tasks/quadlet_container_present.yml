@@ -49,6 +49,49 @@
     - not podman_quadlet_source.stat.exists
     - podman_quadlet_existing_container.rc == 0
 
+- name: "Checking existing Quadlet environment file ownership"
+  ansible.builtin.stat:
+    path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+    follow: false
+  register: podman_quadlet_environment_stat
+
+- name: "Verifying existing Quadlet environment file ownership"
+  ansible.builtin.include_tasks: quadlet_assert_owned.yml
+  vars:
+    podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+  when:
+    - podman_container_effective.environment | default({}) | length > 0
+    - podman_quadlet_environment_stat.stat.exists
+
+- name: "Writing protected Quadlet environment file"
+  ansible.builtin.template:
+    src: "container.env.j2"
+    dest: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+    owner: root
+    group: root
+    mode: "0600"
+  register: podman_quadlet_environment_file
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
+  diff: false
+  when: podman_container_effective.environment | default({}) | length > 0
+
+- name: "Removing obsolete protected Quadlet environment file"
+  ansible.builtin.include_tasks: quadlet_assert_owned.yml
+  vars:
+    podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+  when:
+    - podman_container_effective.environment | default({}) | length == 0
+    - podman_quadlet_environment_stat.stat.exists | default(false)
+
+- name: "Deleting obsolete protected Quadlet environment file"
+  ansible.builtin.file:
+    path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+    state: absent
+  register: podman_quadlet_environment_removed
+  when:
+    - podman_container_effective.environment | default({}) | length == 0
+    - podman_quadlet_environment_stat.stat.exists | default(false)
+
 - name: "Rendering rootful Quadlet container unit"
   ansible.builtin.template:
     src: "container.container.j2"
@@ -62,4 +105,7 @@
   ansible.builtin.systemd:
     name: "{{ podman_container_effective.parameters.name }}.service"
     daemon_reload: true
-    state: "{{ 'restarted' if podman_quadlet_unit_file.changed else 'started' }}"
+    state: >-
+      {{ 'restarted' if (podman_quadlet_unit_file.changed or
+      podman_quadlet_environment_file.changed | default(false) or
+      podman_quadlet_environment_removed.changed | default(false)) else 'started' }}

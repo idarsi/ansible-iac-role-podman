@@ -28,6 +28,9 @@
         ) | combine(podman_container_record, recursive=True)
       }}
 
+- name: "Resetting per-container Podman environment file state"
+  ansible.builtin.include_tasks: container_environment_reset.yml
+
 - name: "Checking that container image or preset is valid"
   ansible.builtin.assert:
     that:
@@ -72,6 +75,18 @@
         podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
       when: podman_quadlet_source.stat.exists
 
+    - name: "Checking for paired Quadlet environment file"
+      ansible.builtin.stat:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+        follow: false
+      register: podman_quadlet_environment_stat
+
+    - name: "Verifying ownership before removing paired Quadlet environment file"
+      ansible.builtin.include_tasks: quadlet_assert_owned.yml
+      vars:
+        podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+      when: podman_quadlet_environment_stat.stat.exists
+
     - name: "Stopping generated Quadlet service before switching management mode"
       ansible.builtin.systemd:
         name: "{{ podman_container_effective.parameters.name }}.service"
@@ -84,39 +99,79 @@
         state: absent
       when: podman_quadlet_source.stat.exists
 
+    - name: "Removing paired role-managed Quadlet environment file"
+      ansible.builtin.file:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+        state: absent
+      when: podman_quadlet_environment_stat.stat.exists
+
     - name: "Reloading systemd after Quadlet definition removal"
       ansible.builtin.systemd:
         daemon_reload: true
       when: podman_quadlet_source.stat.exists
 - name: "Building safe Podman create argv"
-  ansible.builtin.include_tasks: container_create_argv.yml
   when: not (podman_container_effective.quadlet | default(false) | bool)
+  block:
+    - name: "Checking container status"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "{{ podman_container_effective.parameters.name }}"]
+      register: container_active
+      changed_when: false
+      failed_when: false
+
+    - name: "Preparing private temporary environment file for Podman"
+      when:
+        - container_active.rc != 0
+        - podman_container_effective.environment | default({}) | length > 0
+      block:
+        - name: "Creating private temporary environment directory"
+          ansible.builtin.tempfile:
+            state: directory
+            path: /run
+            prefix: ansible-podman-env-
+          register: podman_environment_directory
+
+        - name: "Writing private temporary environment file"
+          ansible.builtin.template:
+            src: podman.env.j2
+            dest: "{{ podman_environment_directory.path }}/environment"
+            mode: "0600"
+          register: podman_environment_file_write
+          no_log: true
+
+        - name: "Setting temporary environment file path for argv construction"
+          ansible.builtin.set_fact:
+            podman_container_environment_file:
+              path: "{{ podman_environment_directory.path }}/environment"
+          no_log: true
+
+    - name: "Building safe Podman create argv"
+      ansible.builtin.include_tasks: container_create_argv.yml
+
+    - name: "Ensuring container is present"
+      ansible.builtin.command:
+        argv: "{{ podman_container_create_argv }}"
+      environment:
+        http_proxy: "{{ http_proxy | default(omit) }}"
+        https_proxy: "{{ https_proxy | default(omit) }}"
+        no_proxy: "{{ no_proxy | default(omit) }}"
+      no_log: >-
+        {{ (podman_container_effective.environment | default({}) | length > 0)
+           or (http_proxy | default('') | length > 0)
+           or (https_proxy | default('') | length > 0)
+           or (no_proxy | default('') | length > 0) }}
+      changed_when: true
+      when: container_active.rc != 0
+  always:
+    - name: "Removing private temporary environment directory"
+      ansible.builtin.file:
+        path: "{{ podman_environment_directory.path }}"
+        state: absent
+      when:
+        - podman_environment_directory is defined
+        - podman_environment_directory is mapping
+        - podman_environment_directory.path is defined
 
 - name: "Managing rootful Quadlet container unit"
   ansible.builtin.include_tasks: quadlet_container_present.yml
   when: podman_container_effective.quadlet | default(false) | bool
-
-- name: "Checking container status"
-  ansible.builtin.command:
-    argv:
-      - "podman"
-      - "inspect"
-      - "--format"
-      - "{{ '{{ .State.Status }}' }}"
-      - "{{ podman_container_effective.parameters.name }}"
-  register: container_active
-  changed_when: false
-  failed_when: false
-  when: not (podman_container_effective.quadlet | default(false) | bool)
-
-- name: "Ensuring container is present"
-  ansible.builtin.command:
-    argv: "{{ podman_container_create_argv }}"
-  changed_when: true
-  environment:
-    http_proxy: "{{ http_proxy | default(omit) }}"
-    https_proxy: "{{ https_proxy | default(omit) }}"
-    no_proxy: "{{ no_proxy | default(omit) }}"
-  when:
-    - not (podman_container_effective.quadlet | default(false) | bool)
-    - container_active.rc != 0
