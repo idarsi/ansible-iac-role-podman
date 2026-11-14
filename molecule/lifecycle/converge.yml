@@ -547,3 +547,150 @@
         name: ansible-iac-role-podman
       vars:
         state: container_absent
+
+- name: Verify secret-bearing direct create failures are censored and cleaned up
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_failure_secret: "synthetic-direct-failure-secret"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-direct-failure"
+              definitely_not_a_podman_option: true
+            command: ["sleep", "infinity"]
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
+  tasks:
+    - name: "Expect direct create to fail with its environment protected"
+      block:
+        - name: "Attempt direct container creation"
+          ansible.builtin.include_role:
+            name: ansible-iac-role-podman
+      rescue:
+        - name: "Verify the direct container creation task failed"
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == "Ensuring container is present"
+              - ansible_failed_task.no_log | default(false) | bool
+            fail_msg: "Failure was not raised by the direct container creation task"
+        - name: "Record expected direct create failure without exposing it"
+          ansible.builtin.set_fact:
+            podman_direct_failure_caught: true
+      always:
+        - name: "Check direct temporary environment directory was removed"
+          ansible.builtin.stat:
+            path: "{{ podman_environment_directory.path }}"
+          register: podman_direct_failure_temp
+          when: podman_environment_directory is defined
+        - name: "Remove any failed direct test container"
+          ansible.builtin.command:
+            argv: ["podman", "rm", "--force", "molecule-direct-failure"]
+          changed_when: false
+          failed_when: false
+    - name: "Verify direct create failed and its temporary files were removed"
+      ansible.builtin.assert:
+        that:
+          - podman_direct_failure_caught | default(false)
+          - podman_direct_failure_temp is defined
+          - not podman_direct_failure_temp.stat.exists
+        fail_msg: "Expected a censored direct create failure and complete temp cleanup"
+
+- name: Verify secret-bearing Quadlet systemd application failures are censored
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_failure_secret: "synthetic-quadlet-failure-secret"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-failure"
+            command: ["/bin/false"]
+            quadlet: true
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
+  tasks:
+    - name: "Expect Quadlet service application to fail with its environment protected"
+      block:
+        - name: "Attempt to apply failing Quadlet service"
+          ansible.builtin.include_role:
+            name: ansible-iac-role-podman
+      rescue:
+        - name: "Verify Quadlet service application task failed"
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == "Applying generated Quadlet service"
+              - ansible_failed_task.no_log | default(false) | bool
+            fail_msg: "Failure was not raised while applying the generated Quadlet service"
+        - name: "Record expected Quadlet application failure without exposing it"
+          ansible.builtin.set_fact:
+            podman_quadlet_failure_caught: true
+      always:
+        - name: "Remove failed Quadlet service and role-owned files"
+          ansible.builtin.command:
+            argv: ["systemctl", "stop", "molecule-quadlet-failure.service"]
+          changed_when: false
+          failed_when: false
+        - name: "Remove failed Quadlet container"
+          ansible.builtin.command:
+            argv: ["podman", "rm", "--force", "molecule-quadlet-failure"]
+          changed_when: false
+          failed_when: false
+        - name: "Remove failed Quadlet source and environment files"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/containers/systemd/molecule-quadlet-failure.container
+            - /etc/containers/systemd/molecule-quadlet-failure.env
+            - /etc/containers/systemd/.molecule-quadlet-failure.container.ansible-managed
+            - /etc/containers/systemd/.molecule-quadlet-failure.env.ansible-managed
+        - name: "Reload systemd and reset failed Quadlet service"
+          ansible.builtin.command:
+            argv: ["systemctl", "daemon-reload"]
+          changed_when: false
+          failed_when: false
+        - name: "Reset failed Quadlet service state"
+          ansible.builtin.command:
+            argv: ["systemctl", "reset-failed", "molecule-quadlet-failure.service"]
+          changed_when: false
+          failed_when: false
+    - name: "Check failed Quadlet files were removed"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/molecule-quadlet-failure.container
+        - /etc/containers/systemd/molecule-quadlet-failure.env
+        - /etc/containers/systemd/.molecule-quadlet-failure.container.ansible-managed
+        - /etc/containers/systemd/.molecule-quadlet-failure.env.ansible-managed
+      register: podman_quadlet_failure_cleanup_stat
+    - name: "Check failed Quadlet service reset state"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=ActiveState", "--value", "molecule-quadlet-failure.service"]
+      register: podman_quadlet_failure_unit_active
+      changed_when: false
+      failed_when: false
+    - name: "Check failed Quadlet service result reset"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=Result", "--value", "molecule-quadlet-failure.service"]
+      register: podman_quadlet_failure_unit_result
+      changed_when: false
+      failed_when: false
+    - name: "Verify Quadlet application failure and cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_failure_caught | default(false)
+          - podman_quadlet_failure_cleanup_stat.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 0
+          - podman_quadlet_failure_unit_active.rc == 0
+          - podman_quadlet_failure_unit_active.stdout == "inactive"
+          - podman_quadlet_failure_unit_result.rc == 0
+          - podman_quadlet_failure_unit_result.stdout == "success"
+        fail_msg: "Expected a censored Quadlet systemd application failure"

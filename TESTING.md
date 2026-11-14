@@ -64,7 +64,12 @@ scenario files intentionally retain those schema-compatible forms.
   container; the test documents this creation-time behavior. Quadlet coverage
   verifies the protected `.env` mode/ownership, runtime value update, repeat
   convergence, stale-file removal, and cleanup when switching to direct mode.
-  Secret-bearing command results and assertions use `no_log`.
+  Secret-bearing command results and assertions use `no_log`. Failure-path
+  coverage uses synthetic secret values and deterministic local command
+  failures: direct create failure verifies task-output censorship and cleanup
+  of its temporary environment directory, while Quadlet service application
+  failure verifies censorship and removes generated files and systemd failed
+  state. These fixtures must never print their synthetic values.
 - The lifecycle fixture uses a simple scalar command and the role's argv
   builder also accepts list-valued Podman parameters; static YAML checks cover
   the task structure, while full argv/runtime coverage remains Molecule-only.

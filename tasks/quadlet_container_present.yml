@@ -109,3 +109,4 @@
       {{ 'restarted' if (podman_quadlet_unit_file.changed or
       podman_quadlet_environment_file.changed | default(false) or
       podman_quadlet_environment_removed.changed | default(false)) else 'started' }}
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
