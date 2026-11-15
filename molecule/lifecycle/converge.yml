@@ -159,6 +159,7 @@
   vars:
     podman_skip_container_guard: true
     state: container_present
+    podman_lifecycle_secret_value: 'space "quote" \\ backslash $HOME 100%'
     iac_blueprint:
       podman:
         containers:
@@ -310,3 +311,488 @@
       ansible.builtin.assert:
         that:
           - not podman_quadlet_definition_after_removal.stat.exists
+
+- name: Exercise private direct-container environment handling
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_secret_value: 'space "quote" \\ backslash $HOME 100%'
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-direct-secret"
+            command: ["sleep", "infinity"]
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_secret_value }}"
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Verify direct create argv contains no synthetic environment value"
+      ansible.builtin.assert:
+        that:
+          - "'--env-file' in podman_container_create_argv"
+          - "'--env' not in podman_container_create_argv"
+          - "'space \"quote\" \\\\ backslash $HOME 100%' not in podman_container_create_argv"
+        fail_msg: "Direct create argv exposed a synthetic environment value"
+      no_log: true
+    - name: "Verify direct temporary environment directory was removed"
+      ansible.builtin.stat:
+        path: "{{ podman_environment_directory.path }}"
+      register: podman_direct_environment_temp
+    - name: "Assert direct temporary environment cleanup"
+      ansible.builtin.assert:
+        that:
+          - not podman_direct_environment_temp.stat.exists
+    - name: "Inspect direct container environment without exposing captured data"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{range .Config.Env}}{{println .}}{{end}}' }}", "molecule-direct-secret"]
+      register: podman_direct_secret_environment
+      changed_when: false
+      no_log: true
+    - name: "Verify direct-mode environment was preserved"
+      ansible.builtin.assert:
+        that:
+          - "('MOLECULE_SYNTHETIC_ONLY=' ~ podman_lifecycle_secret_value) in podman_direct_secret_environment.stdout"
+        fail_msg: "Direct-mode environment value was not preserved in the container"
+      no_log: true
+
+- name: Verify direct environment repeat and document creation-time semantics
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_secret_value: 'space "quote" \\ backslash $HOME 100%'
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-direct-secret"
+            command: ["sleep", "infinity"]
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: 'updated value is not applied without recreating the container'
+  tasks:
+    - name: "Repeating direct-container convergence with changed source environment"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Inspect direct container environment without exposing captured data"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{range .Config.Env}}{{println .}}{{end}}' }}", "molecule-direct-secret"]
+      register: podman_direct_secret_environment
+      changed_when: false
+      no_log: true
+    - name: "Verify direct-mode environment remains creation-time state"
+      ansible.builtin.assert:
+        that:
+          - "('MOLECULE_SYNTHETIC_ONLY=' ~ podman_lifecycle_secret_value) in podman_direct_secret_environment.stdout"
+        fail_msg: "Direct-mode environment unexpectedly changed without container recreation"
+      no_log: true
+    - name: "Removing direct-mode test container"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        state: container_absent
+
+- name: Exercise Quadlet secret environment update and cleanup
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_secret_value: 'space "quote" \\ backslash $HOME 100%'
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-secret"
+            command: ["sleep", "infinity"]
+            quadlet: true
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_secret_value }}"
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Checking protected Quadlet environment file"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_quadlet_secret_file
+    - name: "Verifying Quadlet environment file is private"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_secret_file.stat.exists
+          - podman_quadlet_secret_file.stat.mode == "0600"
+          - podman_quadlet_secret_file.stat.pw_name == "root"
+          - podman_quadlet_secret_file.stat.gr_name == "root"
+    - name: "Starting secret-bearing Quadlet service"
+      ansible.builtin.systemd:
+        name: molecule-quadlet-secret.service
+        state: started
+    - name: "Recording protected environment file checksum before repeat"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+        checksum_algorithm: sha256
+      register: podman_quadlet_secret_file_before_repeat
+    - name: "Repeating Quadlet convergence with unchanged synthetic environment"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Checking protected environment file checksum after repeat"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+        checksum_algorithm: sha256
+      register: podman_quadlet_secret_file_after_repeat
+    - name: "Verifying repeated Quadlet convergence preserved environment file"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_secret_file_before_repeat.stat.checksum == podman_quadlet_secret_file_after_repeat.stat.checksum
+    - name: "Inspect Quadlet container environment without exposing captured data"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{range .Config.Env}}{{println .}}{{end}}' }}", "molecule-quadlet-secret"]
+      register: podman_quadlet_secret_environment
+      changed_when: false
+      no_log: true
+    - name: "Verify Quadlet environment was preserved"
+      ansible.builtin.assert:
+        that:
+          - "('MOLECULE_SYNTHETIC_ONLY=' ~ podman_lifecycle_secret_value) in podman_quadlet_secret_environment.stdout"
+        fail_msg: "Quadlet environment value was not preserved in the container"
+      no_log: true
+
+- name: Update Quadlet environment and verify restart
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-secret"
+            command: ["sleep", "infinity"]
+            quadlet: true
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: 'updated value with "quotes" and 100%'
+  roles:
+    - role: ansible-iac-role-podman
+  post_tasks:
+    - name: "Inspect updated Quadlet container environment without exposing captured data"
+      ansible.builtin.command:
+        argv: ["podman", "inspect", "--format", "{{ '{{range .Config.Env}}{{println .}}{{end}}' }}", "molecule-quadlet-secret"]
+      register: podman_quadlet_secret_environment
+      changed_when: false
+      no_log: true
+    - name: "Verify updated Quadlet value reached the running container"
+      ansible.builtin.assert:
+        that:
+          - "'MOLECULE_SYNTHETIC_ONLY=updated value with \"quotes\" and 100%' in podman_quadlet_secret_environment.stdout"
+        fail_msg: "Updated Quadlet environment value was not applied"
+      no_log: true
+    - name: "Converging Quadlet secret definition a second time"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Removing Quadlet environment from desired configuration"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        iac_blueprint:
+          podman:
+            containers:
+              - image: "docker.io/library/alpine:latest"
+                parameters:
+                  name: "molecule-quadlet-secret"
+                command: ["sleep", "infinity"]
+                quadlet: true
+    - name: "Checking stale Quadlet environment was removed"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_quadlet_secret_file_after_cleanup
+    - name: "Verifying stale Quadlet environment file is absent"
+      ansible.builtin.assert:
+        that:
+          - not podman_quadlet_secret_file_after_cleanup.stat.exists
+    - name: "Restore secret-bearing Quadlet before transition cleanup"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Check paired environment exists before transition"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_transition_environment
+    - name: "Assert transition exercises paired environment cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_transition_environment.stat.exists
+    - name: "Switching secret container from Quadlet to direct management"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        iac_blueprint:
+          podman:
+            containers:
+              - image: "docker.io/library/alpine:latest"
+                parameters:
+                  name: "molecule-quadlet-secret"
+                command: ["sleep", "infinity"]
+                environment:
+                  MOLECULE_SYNTHETIC_ONLY: 'direct-mode transition'
+    - name: "Checking Quadlet files were removed on mode transition"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/molecule-quadlet-secret.container
+        - /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_quadlet_files_after_transition
+    - name: "Verifying stale Quadlet files are absent after mode transition"
+      ansible.builtin.assert:
+        that:
+          - not item.stat.exists
+      loop: "{{ podman_quadlet_files_after_transition.results }}"
+    - name: "Remove direct container before restoring Quadlet"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        state: container_absent
+    - name: "Restore secret-bearing Quadlet before absent cleanup"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Check paired environment exists before absent"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_absent_environment
+    - name: "Assert absent exercises paired environment cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_absent_environment.stat.exists
+    - name: "Removing Quadlet secret test container"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        state: container_absent
+
+    - name: "Check paired environment removed by absent"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_absent_environment
+    - name: "Assert paired environment absent"
+      ansible.builtin.assert:
+        that:
+          - not podman_absent_environment.stat.exists
+
+- name: Verify secret-bearing direct create failures are censored and cleaned up
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_failure_secret: "synthetic-direct-failure-secret"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-direct-failure"
+              network: "molecule-network-that-does-not-exist"
+            command: ["sleep", "infinity"]
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
+  tasks:
+    - name: "Expect direct create to fail with its environment protected"
+      block:
+        - name: "Attempt direct container creation"
+          ansible.builtin.include_role:
+            name: ansible-iac-role-podman
+      rescue:
+        - name: "Verify the direct container creation task failed"
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == "Ensuring container is present"
+              - ansible_failed_task.no_log | default(false) | bool
+            fail_msg: "Failure was not raised by the direct container creation task"
+        - name: "Record expected direct create failure without exposing it"
+          ansible.builtin.set_fact:
+            podman_direct_failure_caught: true
+      always:
+        - name: "Check direct temporary environment directory was removed"
+          ansible.builtin.stat:
+            path: "{{ podman_environment_directory.path }}"
+          register: podman_direct_failure_temp
+          when: podman_environment_directory is defined
+        - name: "Remove any failed direct test container"
+          ansible.builtin.command:
+            argv: ["podman", "rm", "--force", "molecule-direct-failure"]
+          changed_when: false
+          failed_when: false
+    - name: "Verify direct create failed and its temporary files were removed"
+      ansible.builtin.assert:
+        that:
+          - podman_direct_failure_caught | default(false)
+          - podman_direct_failure_temp is defined
+          - not podman_direct_failure_temp.stat.exists
+        fail_msg: "Expected a censored direct create failure and complete temp cleanup"
+
+- name: Verify secret-bearing Quadlet systemd application failures are censored
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: container_present
+    podman_lifecycle_failure_secret: "synthetic-quadlet-failure-secret"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-quadlet-failure"
+            command: ["/molecule-guaranteed-nonexistent-executable"]
+            quadlet: true
+            environment:
+              MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
+  tasks:
+    - name: "Expect Quadlet service application to fail with its environment protected"
+      block:
+        - name: "Attempt to apply failing Quadlet service"
+          ansible.builtin.include_role:
+            name: ansible-iac-role-podman
+      rescue:
+        - name: "Verify Quadlet service application task failed"
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name == "Applying generated Quadlet service"
+              - ansible_failed_task.no_log | default(false) | bool
+            fail_msg: "Failure was not raised while applying the generated Quadlet service"
+        - name: "Record expected Quadlet application failure without exposing it"
+          ansible.builtin.set_fact:
+            podman_quadlet_failure_caught: true
+      always:
+        - name: "Remove failed Quadlet service and role-owned files"
+          ansible.builtin.command:
+            argv: ["systemctl", "stop", "molecule-quadlet-failure.service"]
+          changed_when: false
+          failed_when: false
+        - name: "Remove failed Quadlet container"
+          ansible.builtin.command:
+            argv: ["podman", "rm", "--force", "molecule-quadlet-failure"]
+          changed_when: false
+          failed_when: false
+        - name: "Remove failed Quadlet source and environment files"
+          ansible.builtin.file:
+            path: "{{ item }}"
+            state: absent
+          loop:
+            - /etc/containers/systemd/molecule-quadlet-failure.container
+            - /etc/containers/systemd/molecule-quadlet-failure.env
+            - /etc/containers/systemd/.molecule-quadlet-failure.container.ansible-managed
+            - /etc/containers/systemd/.molecule-quadlet-failure.env.ansible-managed
+        - name: "Reload systemd and reset failed Quadlet service"
+          ansible.builtin.command:
+            argv: ["systemctl", "daemon-reload"]
+          changed_when: false
+          failed_when: false
+        - name: "Reset failed Quadlet service state"
+          ansible.builtin.command:
+            argv: ["systemctl", "reset-failed", "molecule-quadlet-failure.service"]
+          changed_when: false
+          failed_when: false
+    - name: "Check failed Quadlet files were removed"
+      ansible.builtin.stat:
+        path: "{{ item }}"
+      loop:
+        - /etc/containers/systemd/molecule-quadlet-failure.container
+        - /etc/containers/systemd/molecule-quadlet-failure.env
+        - /etc/containers/systemd/.molecule-quadlet-failure.container.ansible-managed
+        - /etc/containers/systemd/.molecule-quadlet-failure.env.ansible-managed
+      register: podman_quadlet_failure_cleanup_stat
+    - name: "Check failed Quadlet service reset state"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=ActiveState", "--value", "molecule-quadlet-failure.service"]
+      register: podman_quadlet_failure_unit_active
+      changed_when: false
+      failed_when: false
+    - name: "Check failed Quadlet service result reset"
+      ansible.builtin.command:
+        argv: ["systemctl", "show", "--property=Result", "--value", "molecule-quadlet-failure.service"]
+      register: podman_quadlet_failure_unit_result
+      changed_when: false
+      failed_when: false
+    - name: "Verify Quadlet application failure and cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_quadlet_failure_caught | default(false)
+          - podman_quadlet_failure_cleanup_stat.results | map(attribute='stat.exists') | select('equalto', true) | list | length == 0
+          - podman_quadlet_failure_unit_active.rc == 0
+          - podman_quadlet_failure_unit_active.stdout == "inactive"
+          - podman_quadlet_failure_unit_result.rc == 0
+          - podman_quadlet_failure_unit_result.stdout == "success"
+        fail_msg: "Expected a censored Quadlet systemd application failure"
+
+- name: "Verify direct orphan cleanup path and ownership guards"
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: "container_absent"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-orphan-guard"
+  tasks:
+    - name: "Exercise disposable orphan guards"
+      block:
+        - name: "Create owned orphan environment fixture"
+          ansible.builtin.copy:
+            dest: "/etc/containers/systemd/molecule-orphan-guard.env"
+            content: "# Managed by ansible-iac-role-podman.\nSYNTHETIC_ONLY=orphan\n"
+            mode: "0600"
+        - name: "Check backup paths are unused"
+          ansible.builtin.stat:
+            path: "{{ item }}.molecule-backup"
+          loop: ["/etc/containers", "/etc/containers/systemd"]
+          register: podman_guard_backups
+        - name: "Refuse to overwrite existing backups"
+          ansible.builtin.assert:
+            that:
+              - podman_guard_backups.results | selectattr('stat.exists') | list | length == 0
+        - name: "Exercise both parent symlink boundaries"
+          ansible.builtin.include_tasks: tasks/orphan-path-guard.yml
+          loop: ["/etc/containers/systemd", "/etc/containers"]
+          loop_control:
+            loop_var: podman_guard_parent
+        - name: "Replace fixture with unowned environment file"
+          ansible.builtin.copy:
+            dest: "/etc/containers/systemd/molecule-orphan-guard.env"
+            content: "SYNTHETIC_ONLY=unowned\n"
+            mode: "0600"
+        - name: "Expect unowned orphan preservation"
+          block:
+            - name: "Attempt unowned orphan cleanup"
+              ansible.builtin.include_role:
+                name: "ansible-iac-role-podman"
+            - name: "Fail if unowned orphan accepted"
+              ansible.builtin.fail:
+                msg: "Unowned orphan unexpectedly accepted"
+          rescue:
+            - name: "Verify exact ownership rejection"
+              ansible.builtin.assert:
+                that:
+                  - ansible_failed_task.name == "Rejecting an unmanaged Quadlet unit"
+        - name: "Read preserved unowned fixture"
+          ansible.builtin.slurp:
+            src: "/etc/containers/systemd/molecule-orphan-guard.env"
+          register: podman_guard_unowned
+        - name: "Verify unowned content unchanged"
+          ansible.builtin.assert:
+            that:
+              - podman_guard_unowned.content | b64decode == "SYNTHETIC_ONLY=unowned\n"
+      always:
+        - name: "Remove only orphan regression fixture"
+          ansible.builtin.file:
+            path: "/etc/containers/systemd/molecule-orphan-guard.env"
+            state: "absent"

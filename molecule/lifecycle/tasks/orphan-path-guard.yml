@@ -1,0 +1,54 @@
+---
+- name: "Check orphan cleanup through a symlinked parent"
+  # Only included by the disposable lifecycle scenario.
+  block:
+    - name: "Move real parent aside in disposable host"
+      ansible.builtin.command:
+        argv: ["mv", "{{ podman_guard_parent }}", "{{ podman_guard_parent }}.molecule-backup"]
+      changed_when: true
+    - name: "Link parent to its saved directory"
+      ansible.builtin.file:
+        path: "{{ podman_guard_parent }}"
+        src: "{{ podman_guard_parent }}.molecule-backup"
+        state: "link"
+    - name: "Expect direct orphan cleanup to reject parent symlink"
+      block:
+        - name: "Attempt direct orphan cleanup"
+          ansible.builtin.include_role:
+            name: "ansible-iac-role-podman"
+        - name: "Fail if parent symlink was accepted"
+          ansible.builtin.fail:
+            msg: "Parent symlink unexpectedly accepted"
+      rescue:
+        - name: "Verify exact parent guard rejected cleanup"
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_task.name in ["Rejecting symbolic link in /etc/containers", "Rejecting symbolic link in rootful Quadlet directory"]
+    - name: "Check orphan survived rejected cleanup"
+      ansible.builtin.stat:
+        path: "/etc/containers/systemd/molecule-orphan-guard.env"
+      register: podman_guard_orphan
+    - name: "Assert orphan preserved"
+      ansible.builtin.assert:
+        that:
+          - podman_guard_orphan.stat.exists
+  always:
+    - name: "Inspect parent before restoration"
+      ansible.builtin.stat:
+        path: "{{ podman_guard_parent }}"
+        follow: false
+      register: podman_guard_parent_stat
+    - name: "Remove only fixture parent symlink"
+      ansible.builtin.file:
+        path: "{{ podman_guard_parent }}"
+        state: "absent"
+      when: podman_guard_parent_stat.stat.islnk | default(false)
+    - name: "Check saved parent"
+      ansible.builtin.stat:
+        path: "{{ podman_guard_parent }}.molecule-backup"
+      register: podman_guard_backup
+    - name: "Restore saved parent"
+      ansible.builtin.command:
+        argv: ["mv", "{{ podman_guard_parent }}.molecule-backup", "{{ podman_guard_parent }}"]
+      changed_when: true
+      when: podman_guard_backup.stat.exists

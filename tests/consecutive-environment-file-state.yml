@@ -1,0 +1,21 @@
+---
+- name: "Verify consecutive container environment-file state is isolated"
+  hosts: localhost
+  connection: local
+  gather_facts: false
+  tasks:
+    - name: "Simulate first container with an environment file"
+      ansible.builtin.set_fact:
+        podman_container_environment_file:
+          path: /run/ansible-podman-env-first/environment
+        podman_environment_directory:
+          path: /run/ansible-podman-env-first
+
+    - name: "Reset state before the next container without environment values"
+      ansible.builtin.include_tasks: ../tasks/container_environment_reset.yml
+
+    - name: "Assert no first-container file path leaks into the next create"
+      ansible.builtin.assert:
+        that:
+          - podman_container_environment_file is none
+          - podman_environment_directory is none

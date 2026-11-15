@@ -19,7 +19,7 @@ gate; run them separately with the approved Idarsi test environment.
 Scenario                         | Platform/image                         | Main coverage
 ---------------------------------|----------------------------------------|------------------------------
 `default`                        | Rocky Linux 9 and 10 init              | Podman installation, network configuration, directories, files, cron, and a running container
-`lifecycle`                      | Rocky Linux 10 init                    | Classic container lifecycle plus rootful Quadlet unit generation, generated systemd service start and enablement status, repeated converge, stop, and removal
+`lifecycle`                      | Rocky Linux 10 init                    | Classic container lifecycle, protected direct/Quadlet environment handling and update/cleanup, plus rootful Quadlet service lifecycle
 `experimental`                   | Rocky Linux 10 init                    | Package and service bootstrap, generated root SSH access, controller and inline authorized keys, and published SSH access
 `experimental-ip`                | Rocky Linux 10 init                    | Generated SSH access and login through the container IP address
 `experimental-host-user`        | Rocky Linux 10 init                    | Generated SSH artifacts owned by a non-root host user and SSH login through that user
@@ -30,9 +30,12 @@ they force the `vfs` storage driver and set `podman_skip_container_guard` for
 the test container. These settings are test-only and must not be copied into
 production inventory examples.
 
-The installed Molecule schema requires `ansible.env` for provisioner
-environment variables and string values such as `systemd: "true"`; the
-scenario files intentionally retain those schema-compatible forms.
+The scenarios retain `provisioner.env` for compatibility with the shared
+`ansible-min` environment (Ansible Core 2.15.13 / Molecule 6.0.3), whose schema
+rejects top-level `ansible`. The shared current environment (Molecule 26.8.0)
+automatically migrates `provisioner.env` to `ansible.env` when loading the
+configuration. Environment values are identical on both versions; platform
+values such as `systemd: "true"` remain strings for schema compatibility.
 
 ## Scenario coverage
 
@@ -57,6 +60,19 @@ scenario files intentionally retain those schema-compatible forms.
   Repeating converge is not used as an idempotence assertion because the
   aggregate result of `include_role` does not reliably report child-task
   changes.
+- The lifecycle scenario uses only synthetic environment values to verify that
+  direct-mode Podman argv excludes the value while the created container keeps
+  the exact value, including spaces, quotes, backslashes, `$`, and `%`. Direct
+  mode does not reconcile environment changes on an already existing
+  container; the test documents this creation-time behavior. Quadlet coverage
+  verifies the protected `.env` mode/ownership, runtime value update, repeat
+  convergence, stale-file removal, and cleanup when switching to direct mode.
+  Secret-bearing command results and assertions use `no_log`. Failure-path
+  coverage uses synthetic secret values and deterministic local command
+  failures: direct create failure verifies task-output censorship and cleanup
+  of its temporary environment directory, while Quadlet service application
+  failure verifies censorship and removes generated files and systemd failed
+  state. These fixtures must never print their synthetic values.
 - The lifecycle fixture uses a simple scalar command and the role's argv
   builder also accepts list-valued Podman parameters; static YAML checks cover
   the task structure, while full argv/runtime coverage remains Molecule-only.
@@ -86,23 +102,54 @@ scenario files intentionally retain those schema-compatible forms.
   `quadlet` values in the controller-side blueprint fixture. Rootful Quadlet
   runtime behavior is covered by `molecule/lifecycle`, including generated
   unit contents, service state, enablement status, stop, and removal. The
-  scenario does not reboot the host; transitions between classic and Quadlet
-  management and unmanaged-definition preservation remain runtime-uncovered.
+  scenario verifies Quadlet-to-direct management transition cleanup. It does
+  not reboot the host; direct-to-Quadlet transition and unmanaged-definition
+  preservation remain runtime-uncovered.
 
 ## Running tests
 
-The argv fixture exercises argv construction; the blueprint fixture exercises
+The latest review fixes passed focused lifecycle and `-vvv --diff`
+captured-output regressions on both shared minimum and current toolchains,
+including actual-host completion-marker checks and successful destroy.
+Lifecycle verification reported `ok=3 changed=0 failed=0` on both; its five
+intentional rescues exercise direct/Quadlet failure cleanup, both parent
+symlink guards, and unowned orphan preservation. Lifecycle automated
+idempotence is not configured. The seven broader minimum/current passes in
+the maturity assessment remain historical evidence from before these fixes.
+Lifecycle now also tests direct orphan cleanup against both parent-directory
+symlinks and unowned files, and restores a protected Quadlet environment before
+testing transition and absent cleanup.
+
+On prepared disposable lifecycle hosts, run the captured-output regression
+with the same inventory/connection settings used by Molecule:
+
+```bash
+bash tests/quadlet-secret-output.sh -i <disposable-lifecycle-inventory>
+```
+
+This wrapper runs `tests/quadlet-secret-output.yml` with `-vvv --diff`, capturing
+output privately and rejecting synthetic secret values during repeated
+convergence and legacy inline-environment migration. It withholds captured
+output on failure and deletes it on exit. It is a runtime test, not a
+controller-only CI fixture.
+
+The argv and EnvironmentFile fixtures exercise controller-side serialization;
+the blueprint fixture exercises
 the public `validate` state through `tasks/main.yml`, which bypasses runtime
 checks and state mutation. Both run controller-side without Podman:
 
 ```bash
 ansible-playbook tests/argv-construction.yml
+ansible-playbook tests/environment-file-format.yml
 ansible-playbook tests/blueprint-validation.yml
 ```
 
 The argv fixture imports `container_create_argv.yml` and
 `container_bootstrap_package_argv.yml` and covers scalar, repeated list,
-boolean, null, environment, and bootstrap package argv values. Blueprint tests
+boolean and null parameters, environment-file path arguments without inline
+environment values, and bootstrap package argv values. The EnvironmentFile
+fixture checks spaces, quotes, backslashes, dollar signs, and percent signs.
+Blueprint tests
 cover preset-derived lifecycle-name acceptance without specifying
 `parameters.name`, plus exact failure messages for malformed container
 parameters and unknown blueprint keys. This does not prove every task's

@@ -20,10 +20,17 @@
       Remove or replace it explicitly before managing this container.
   when: podman_quadlet_ownership_stat.stat.islnk | default(false)
 
-- name: "Reading existing Quadlet ownership marker"
-  ansible.builtin.slurp:
-    src: "{{ podman_quadlet_unit_path }}"
-  register: podman_quadlet_ownership_content
+- name: "Checking existing Quadlet ownership marker"
+  ansible.builtin.command:
+    argv:
+      - grep
+      - -Fq
+      - "Managed by ansible-iac-role-podman."
+      - "{{ podman_quadlet_unit_path }}"
+  register: podman_quadlet_ownership_marker
+  changed_when: false
+  failed_when: false
+  no_log: true
   when: podman_quadlet_ownership_stat.stat.exists
 
 - name: "Rejecting an unmanaged Quadlet unit"
@@ -34,4 +41,4 @@
       migrate the unit explicitly before retrying.
   when:
     - podman_quadlet_ownership_stat.stat.exists
-    - "'Managed by ansible-iac-role-podman.' not in (podman_quadlet_ownership_content.content | b64decode)"
+    - podman_quadlet_ownership_marker.rc | default(1) != 0

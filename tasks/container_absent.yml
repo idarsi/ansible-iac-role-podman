@@ -34,6 +34,7 @@
           else {}
         ) | combine(podman_container_record, recursive=True)
       }}
+  no_log: true
 
 - name: "Checking removable container name"
   ansible.builtin.assert:
@@ -46,12 +47,12 @@
 # ENSURING CONTAINER IS REMOVED
 ###############################################################################
 
+- name: "Validating rootful Quadlet path before any paired-file cleanup"
+  ansible.builtin.include_tasks: quadlet_validate_path.yml
+
 - name: "Removing rootful Quadlet unit and stopping its generated service"
   when: podman_container_effective.quadlet | default(false) | bool
   block:
-    - name: "Validating rootful Quadlet path before removal"
-      ansible.builtin.include_tasks: quadlet_validate_path.yml
-
     - name: "Setting Quadlet unit path for removal"
       ansible.builtin.set_fact:
         podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.container"
@@ -78,6 +79,24 @@
       ansible.builtin.systemd:
         daemon_reload: true
       when: podman_quadlet_source.stat.exists
+
+- name: "Removing orphaned role-managed Quadlet environment file"
+  block:
+    - name: "Checking for protected Quadlet environment file"
+      ansible.builtin.stat:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+        follow: false
+      register: podman_quadlet_environment_source
+    - name: "Verifying ownership before removing Quadlet environment file"
+      ansible.builtin.include_tasks: quadlet_assert_owned.yml
+      vars:
+        podman_quadlet_unit_path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+      when: podman_quadlet_environment_source.stat.exists
+    - name: "Removing protected Quadlet environment file"
+      ansible.builtin.file:
+        path: "/etc/containers/systemd/{{ podman_container_effective.parameters.name }}.env"
+        state: absent
+      when: podman_quadlet_environment_source.stat.exists
 - name: "Checking container status"
   ansible.builtin.command:
     argv: ["podman", "inspect", "--format", "{{ '{{ .State.Status }}' }}", "{{ podman_container_effective.parameters.name }}"]

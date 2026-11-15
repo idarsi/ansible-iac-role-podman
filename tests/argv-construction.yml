@@ -4,6 +4,11 @@
   connection: local
   gather_facts: false
   vars:
+    http_proxy: "http://proxy-user:proxy-password@example.test:8080"
+    https_proxy: "https://proxy-user:proxy-password@example.test:8443"
+    no_proxy: "localhost,127.0.0.1"
+    podman_container_environment_file:
+      path: "/run/ansible-podman-env-test/environment"
     podman_container_effective:
       image: "docker.io/library/alpine:latest"
       parameters:
@@ -20,7 +25,7 @@
       environment:
         KEEP: "value"
         DROP: null
-      command: ["sleep", "infinity"]
+      command: ["sleep", "", "infinity"]
       bootstrap_packages:
         - "openssh-server"
         - "ca-certificates"
@@ -43,8 +48,14 @@
           - podman_container_create_argv == [
               "podman", "create", "-it", "--name", "argv-fixture", "--publish",
               "8080:80", "--publish", "8443:443", "--privileged", "--volume",
-              "/srv/one:/one:ro", "--volume", "/srv/two:/two:ro", "--env",
-              "KEEP=value", "docker.io/library/alpine:latest", "sleep", "infinity"
+              "/srv/one:/one:ro", "--volume", "/srv/two:/two:ro", "--env-file", "/run/ansible-podman-env-test/environment",
+              "docker.io/library/alpine:latest", "sleep", "", "infinity"
             ]
+          - '"KEEP=value" not in podman_container_create_argv'
+          - podman_container_create_argv | select('equalto', '--env') | list | length == 0
+          - podman_container_create_argv | select('equalto', '--env-file') | list | length == 1
+          - http_proxy not in podman_container_create_argv
+          - https_proxy not in podman_container_create_argv
+          - no_proxy not in podman_container_create_argv
           - podman_bootstrap_package_argv | type_debug == "list"
           - podman_bootstrap_package_argv == ["podman", "exec", "argv-fixture", "dnf", "install", "-y", "openssh-server", "ca-certificates"]

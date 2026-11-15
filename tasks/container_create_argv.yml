@@ -71,21 +71,17 @@
       {%- endif -%}
       {%- endfor -%}
       {{ args }}
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
 - name: "Adding container parameters to Podman create argv"
   ansible.builtin.set_fact:
     podman_container_create_argv: "{{ podman_container_create_argv + podman_container_parameter_args }}"
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
-- name: "Adding non-null container environment values to Podman create argv"
+- name: "Adding Podman environment file to create argv"
   ansible.builtin.set_fact:
-    podman_container_create_argv: >-
-      {{ podman_container_create_argv + ['--env', podman_environment.key ~ '=' ~ (podman_environment.value | string)] }}
-  loop: "{{ podman_container_effective.environment | default({}) | dict2items }}"
-  loop_control:
-    loop_var: podman_environment
-  when:
-    - podman_container_effective.environment is defined
-    - podman_environment.value is not none
+    podman_container_create_argv: "{{ podman_container_create_argv + ['--env-file', podman_container_environment_file.path] }}"
+  when: podman_container_environment_file is mapping
 
 - name: "Adding image and optional command to Podman create argv"
   ansible.builtin.set_fact:
@@ -98,6 +94,7 @@
                   reject('equalto', '') | list))
           if (('command' in podman_container_effective) and podman_container_effective.command is not none)
           else []) }}
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
 - name: "Checking Podman create argv type"
   ansible.builtin.assert:
