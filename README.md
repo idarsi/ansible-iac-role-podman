@@ -1,6 +1,6 @@
-> **Maturity State: Beta**<br>
-> **RC Readiness: 84%**<br>
-> Assessed on `update/molecule-secret-runtime-coverage` at working-tree changes over `7218b9c` (84/100; Beta). The passing lifecycle scenario now verifies secret-safe direct-container creation and protected Quadlet EnvironmentFile permissions, runtime value updates, repeat convergence, stale-file cleanup, and mode-transition cleanup; passing static fixtures cover environment serialization and blueprint validation. This adds evidence for secure behavior and observable functional verification. Remaining gaps include representative automated idempotence assertions, RHEL runtime coverage, boot-time activation, and some lifecycle guardrails; runtime coverage is Rocky Linux only. The assessment is of the current working tree, not the unchanged commit alone.
+> **Maturity State: Alpha**<br>
+> **RC Readiness: 57%**<br>
+> Assessed on `update/molecule-secret-runtime-coverage`, working tree over `8ecd455`: 57.5/100, rounded down. This is a reconstructed evidence baseline, not a regression caused by the Molecule compatibility fix; the historical 84% lacked a criterion scorecard and used increments inconsistent with the rubric. Before the latest review fixes, all six minimum-toolchain scenarios and current-toolchain default passed, with automated zero-change idempotence for default on Rocky Linux 9/10 in both toolchains and all four minimum experimental scenarios. After the fixes, focused lifecycle and verbose secret-output regressions passed on both minimum and current toolchains, including cleanup guards and legacy migration. Lifecycle does not configure automated idempotence. The score is retained pending reassessment. See the [criterion scorecard, evidence, and blockers](docs/maturity-assessment.md), including the pre-existing bind-purge scope guard gap.
 
 ANSIBLE-IAC-ROLE-PODMAN
 =======================

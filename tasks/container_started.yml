@@ -27,6 +27,7 @@
           else {}
         ) | combine(podman_container_record, recursive=True)
       }}
+  no_log: true
 
 - name: "Checking that container name is available"
   ansible.builtin.assert:

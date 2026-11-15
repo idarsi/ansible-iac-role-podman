@@ -71,10 +71,12 @@
       {%- endif -%}
       {%- endfor -%}
       {{ args }}
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
 - name: "Adding container parameters to Podman create argv"
   ansible.builtin.set_fact:
     podman_container_create_argv: "{{ podman_container_create_argv + podman_container_parameter_args }}"
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
 - name: "Adding Podman environment file to create argv"
   ansible.builtin.set_fact:
@@ -92,6 +94,7 @@
                   reject('equalto', '') | list))
           if (('command' in podman_container_effective) and podman_container_effective.command is not none)
           else []) }}
+  no_log: "{{ podman_container_effective.environment | default({}) | length > 0 }}"
 
 - name: "Checking Podman create argv type"
   ansible.builtin.assert:

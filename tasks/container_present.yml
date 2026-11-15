@@ -27,6 +27,7 @@
           else {}
         ) | combine(podman_container_record, recursive=True)
       }}
+  no_log: true
 
 - name: "Resetting per-container Podman environment file state"
   ansible.builtin.include_tasks: container_environment_reset.yml

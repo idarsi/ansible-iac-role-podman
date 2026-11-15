@@ -32,3 +32,5 @@ jobs:
           ansible-playbook --syntax-check -i localhost, tests/blueprint-validation.yml
           ansible-playbook -i localhost, tests/blueprint-validation.yml
           ansible-playbook --check -i localhost, tests/blueprint-validation.yml
+          ansible-playbook -i localhost, tests/environment-file-format.yml
+          ansible-playbook -i localhost, tests/consecutive-environment-file-state.yml

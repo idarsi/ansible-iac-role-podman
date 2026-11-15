@@ -517,6 +517,17 @@
       ansible.builtin.assert:
         that:
           - not podman_quadlet_secret_file_after_cleanup.stat.exists
+    - name: "Restore secret-bearing Quadlet before transition cleanup"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Check paired environment exists before transition"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_transition_environment
+    - name: "Assert transition exercises paired environment cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_transition_environment.stat.exists
     - name: "Switching secret container from Quadlet to direct management"
       ansible.builtin.include_role:
         name: ansible-iac-role-podman
@@ -542,11 +553,36 @@
         that:
           - not item.stat.exists
       loop: "{{ podman_quadlet_files_after_transition.results }}"
+    - name: "Remove direct container before restoring Quadlet"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+      vars:
+        state: container_absent
+    - name: "Restore secret-bearing Quadlet before absent cleanup"
+      ansible.builtin.include_role:
+        name: ansible-iac-role-podman
+    - name: "Check paired environment exists before absent"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_absent_environment
+    - name: "Assert absent exercises paired environment cleanup"
+      ansible.builtin.assert:
+        that:
+          - podman_absent_environment.stat.exists
     - name: "Removing Quadlet secret test container"
       ansible.builtin.include_role:
         name: ansible-iac-role-podman
       vars:
         state: container_absent
+
+    - name: "Check paired environment removed by absent"
+      ansible.builtin.stat:
+        path: /etc/containers/systemd/molecule-quadlet-secret.env
+      register: podman_absent_environment
+    - name: "Assert paired environment absent"
+      ansible.builtin.assert:
+        that:
+          - not podman_absent_environment.stat.exists
 
 - name: Verify secret-bearing direct create failures are censored and cleaned up
   hosts: all
@@ -561,7 +597,7 @@
           - image: "docker.io/library/alpine:latest"
             parameters:
               name: "molecule-direct-failure"
-              definitely_not_a_podman_option: true
+              network: "molecule-network-that-does-not-exist"
             command: ["sleep", "infinity"]
             environment:
               MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
@@ -613,7 +649,7 @@
           - image: "docker.io/library/alpine:latest"
             parameters:
               name: "molecule-quadlet-failure"
-            command: ["/bin/false"]
+            command: ["/molecule-guaranteed-nonexistent-executable"]
             quadlet: true
             environment:
               MOLECULE_SYNTHETIC_ONLY: "{{ podman_lifecycle_failure_secret }}"
@@ -694,3 +730,69 @@
           - podman_quadlet_failure_unit_result.rc == 0
           - podman_quadlet_failure_unit_result.stdout == "success"
         fail_msg: "Expected a censored Quadlet systemd application failure"
+
+- name: "Verify direct orphan cleanup path and ownership guards"
+  hosts: all
+  become: false
+  vars:
+    podman_skip_container_guard: true
+    state: "container_absent"
+    iac_blueprint:
+      podman:
+        containers:
+          - image: "docker.io/library/alpine:latest"
+            parameters:
+              name: "molecule-orphan-guard"
+  tasks:
+    - name: "Exercise disposable orphan guards"
+      block:
+        - name: "Create owned orphan environment fixture"
+          ansible.builtin.copy:
+            dest: "/etc/containers/systemd/molecule-orphan-guard.env"
+            content: "# Managed by ansible-iac-role-podman.\nSYNTHETIC_ONLY=orphan\n"
+            mode: "0600"
+        - name: "Check backup paths are unused"
+          ansible.builtin.stat:
+            path: "{{ item }}.molecule-backup"
+          loop: ["/etc/containers", "/etc/containers/systemd"]
+          register: podman_guard_backups
+        - name: "Refuse to overwrite existing backups"
+          ansible.builtin.assert:
+            that:
+              - podman_guard_backups.results | selectattr('stat.exists') | list | length == 0
+        - name: "Exercise both parent symlink boundaries"
+          ansible.builtin.include_tasks: tasks/orphan-path-guard.yml
+          loop: ["/etc/containers/systemd", "/etc/containers"]
+          loop_control:
+            loop_var: podman_guard_parent
+        - name: "Replace fixture with unowned environment file"
+          ansible.builtin.copy:
+            dest: "/etc/containers/systemd/molecule-orphan-guard.env"
+            content: "SYNTHETIC_ONLY=unowned\n"
+            mode: "0600"
+        - name: "Expect unowned orphan preservation"
+          block:
+            - name: "Attempt unowned orphan cleanup"
+              ansible.builtin.include_role:
+                name: "ansible-iac-role-podman"
+            - name: "Fail if unowned orphan accepted"
+              ansible.builtin.fail:
+                msg: "Unowned orphan unexpectedly accepted"
+          rescue:
+            - name: "Verify exact ownership rejection"
+              ansible.builtin.assert:
+                that:
+                  - ansible_failed_task.name == "Rejecting an unmanaged Quadlet unit"
+        - name: "Read preserved unowned fixture"
+          ansible.builtin.slurp:
+            src: "/etc/containers/systemd/molecule-orphan-guard.env"
+          register: podman_guard_unowned
+        - name: "Verify unowned content unchanged"
+          ansible.builtin.assert:
+            that:
+              - podman_guard_unowned.content | b64decode == "SYNTHETIC_ONLY=unowned\n"
+      always:
+        - name: "Remove only orphan regression fixture"
+          ansible.builtin.file:
+            path: "/etc/containers/systemd/molecule-orphan-guard.env"
+            state: "absent"

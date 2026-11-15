@@ -30,9 +30,12 @@ they force the `vfs` storage driver and set `podman_skip_container_guard` for
 the test container. These settings are test-only and must not be copied into
 production inventory examples.
 
-The installed Molecule schema requires `ansible.env` for provisioner
-environment variables and string values such as `systemd: "true"`; the
-scenario files intentionally retain those schema-compatible forms.
+The scenarios retain `provisioner.env` for compatibility with the shared
+`ansible-min` environment (Ansible Core 2.15.13 / Molecule 6.0.3), whose schema
+rejects top-level `ansible`. The shared current environment (Molecule 26.8.0)
+automatically migrates `provisioner.env` to `ansible.env` when loading the
+configuration. Environment values are identical on both versions; platform
+values such as `systemd: "true"` remain strings for schema compatibility.
 
 ## Scenario coverage
 
@@ -99,10 +102,36 @@ scenario files intentionally retain those schema-compatible forms.
   `quadlet` values in the controller-side blueprint fixture. Rootful Quadlet
   runtime behavior is covered by `molecule/lifecycle`, including generated
   unit contents, service state, enablement status, stop, and removal. The
-  scenario does not reboot the host; transitions between classic and Quadlet
-  management and unmanaged-definition preservation remain runtime-uncovered.
+  scenario verifies Quadlet-to-direct management transition cleanup. It does
+  not reboot the host; direct-to-Quadlet transition and unmanaged-definition
+  preservation remain runtime-uncovered.
 
 ## Running tests
+
+The latest review fixes passed focused lifecycle and `-vvv --diff`
+captured-output regressions on both shared minimum and current toolchains,
+including actual-host completion-marker checks and successful destroy.
+Lifecycle verification reported `ok=3 changed=0 failed=0` on both; its five
+intentional rescues exercise direct/Quadlet failure cleanup, both parent
+symlink guards, and unowned orphan preservation. Lifecycle automated
+idempotence is not configured. The seven broader minimum/current passes in
+the maturity assessment remain historical evidence from before these fixes.
+Lifecycle now also tests direct orphan cleanup against both parent-directory
+symlinks and unowned files, and restores a protected Quadlet environment before
+testing transition and absent cleanup.
+
+On prepared disposable lifecycle hosts, run the captured-output regression
+with the same inventory/connection settings used by Molecule:
+
+```bash
+bash tests/quadlet-secret-output.sh -i <disposable-lifecycle-inventory>
+```
+
+This wrapper runs `tests/quadlet-secret-output.yml` with `-vvv --diff`, capturing
+output privately and rejecting synthetic secret values during repeated
+convergence and legacy inline-environment migration. It withholds captured
+output on failure and deletes it on exit. It is a runtime test, not a
+controller-only CI fixture.
 
 The argv and EnvironmentFile fixtures exercise controller-side serialization;
 the blueprint fixture exercises
@@ -117,7 +146,8 @@ ansible-playbook tests/blueprint-validation.yml
 
 The argv fixture imports `container_create_argv.yml` and
 `container_bootstrap_package_argv.yml` and covers scalar, repeated list,
-boolean, null, inherited environment-key argv values, and bootstrap package argv values. The EnvironmentFile
+boolean and null parameters, environment-file path arguments without inline
+environment values, and bootstrap package argv values. The EnvironmentFile
 fixture checks spaces, quotes, backslashes, dollar signs, and percent signs.
 Blueprint tests
 cover preset-derived lifecycle-name acceptance without specifying

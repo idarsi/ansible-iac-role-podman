@@ -34,8 +34,9 @@
 
 - name: "Checking for an existing container before Quadlet adoption"
   ansible.builtin.command:
-    argv: ["podman", "inspect", "{{ podman_container_effective.parameters.name }}"]
+    argv: ["podman", "container", "exists", "{{ podman_container_effective.parameters.name }}"]
   register: podman_quadlet_existing_container
+  no_log: true
   changed_when: false
   failed_when: false
 
@@ -100,6 +101,9 @@
     group: root
     mode: "0644"
   register: podman_quadlet_unit_file
+  # A legacy unit may contain inline secrets even when the new blueprint does not.
+  diff: false
+  no_log: true
 
 - name: "Applying generated Quadlet service"
   ansible.builtin.systemd:

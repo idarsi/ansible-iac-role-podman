@@ -62,6 +62,39 @@
                   name: quadlet-valid
                   publish: ["8080:80"]
 
+    - name: Direct list commands preserve multiline and tab scripts # noqa no-tabs
+      ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+      vars:
+        iac_blueprint:
+          podman:
+            containers:
+              - image: "example/image"
+                parameters:
+                  name: "direct-script"
+                command: ["sh", "-c", "printf hello\nprintf '\tworld'"]
+
+    - name: Quadlet rejects multiline and tab scripts # noqa no-tabs
+      block:
+        - name: Validate Quadlet script # noqa no-tabs
+          ansible.builtin.include_tasks: ../tasks/validate_blueprint.yml
+          vars:
+            iac_blueprint:
+              podman:
+                containers:
+                  - image: "example/image"
+                    quadlet: true
+                    parameters:
+                      name: "quadlet-script"
+                    command: ["sh", "-c", "printf hello\nprintf '\tworld'"]
+        - name: Fail if Quadlet script was accepted
+          ansible.builtin.fail:
+            msg: "Quadlet script unexpectedly accepted"
+      rescue:
+        - name: Verify Quadlet-specific control rejection
+          ansible.builtin.assert:
+            that:
+              - ansible_failed_result.results[0].msg == "Quadlet content values must not contain newline or other control characters."
+
     - name: Direct container newline injection in environment is rejected
       block:
         - name: Validate newline-bearing environment value
@@ -82,7 +115,10 @@
         - name: Confirm newline injection was rejected precisely
           ansible.builtin.assert:
             that:
-              - ansible_failed_result.results[0].msg == "Container environment keys must be valid identifiers and keys/values must be free of control characters; values must be scalar strings, numbers, booleans, or null."
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Container environment keys must be valid identifiers and keys/values must be free of control characters; values must " ~
+                "be scalar strings, numbers, booleans, or null."
 
     - name: Quadlet unsupported control character in environment is rejected
       block:
@@ -105,7 +141,10 @@
         - name: Confirm Quadlet control character rejection
           ansible.builtin.assert:
             that:
-              - ansible_failed_result.results[0].msg == "Container environment keys must be valid identifiers and keys/values must be free of control characters; values must be scalar strings, numbers, booleans, or null."
+              - >-
+                ansible_failed_result.results[0].msg ==
+                "Container environment keys must be valid identifiers and keys/values must be free of control characters; values must " ~
+                "be scalar strings, numbers, booleans, or null."
 
     - name: Quadlet environment key directive injection is rejected by schema
       block:

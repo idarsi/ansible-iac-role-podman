@@ -60,6 +60,7 @@
   ansible.builtin.set_fact:
     podman_containers: "{{ iac_blueprint.podman.containers | default([]) }}"
     podman_network_configuration: "{{ iac_blueprint.podman.configuration.network | default(omit) }}"
+  no_log: true
 
 - name: "Checking proxy address if it's defined"
   ansible.builtin.set_fact:
